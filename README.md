@@ -1,2 +1,16 @@
 # trs-xenix
-The TRS-XENIX Project
+## The TRS-XENIX Project
+
+The TRS-Xenix Project is focused on keeping the TSR-XENIX operating system alive.  The goals are to understand and learn how the operating system works at a detailed level and to attempt to adapt it to modern hardware and software systems, such as solid state based hard drive emulators and Ethernet connected devices.
+
+TRS-XENIX was released by Tandy in 1983 as an operating system for the Model 16 computer.  The Model 16 had been released a year prior without a robust operating system to truly take advantage of the advanced hardware that the Model 16 encompassed.  TRS-XENIX is an implementation of XENIX which was sold by Microsoft as a Unix solution for microcomputers.  It was based on Unix and has direct lineage to the Unixes of the time.
+
+There are 2 main versions of TRS-XENIX.  TRS-XENIX 1.x which was based on Microsoft's XENIX v2.3 was released for the Model 16 in 1983.  XENIX 3.x (Tandy dropped the "TRS-" prefix at Microsoft's request) was based on Microsoft's Xenix V3 and was released in 1985 for the Tandy 6000.  XENIX 3.x includes backwards compatibility libraries so all software written for TRS-XENIX v1.x will run on XENIX v3.x.
+
+## Major Components
+
+### TRS-XENIX Operating System
+
+### TRS-XENIX Software Development System
+
+### z80ctl

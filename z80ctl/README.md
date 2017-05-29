@@ -2,7 +2,7 @@
 
 ## TRS-XENIX Z80 Control Program
 
-z80ctl was a z80 application that had teh following responsibilities:
+z80ctl was a z80 application that had the following responsibilities:
 
 1. bootstrapping TRS-XENIX
 2. handled all I/O with disks, serial, video, etc.

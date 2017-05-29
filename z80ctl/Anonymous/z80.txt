@@ -1,0 +1,6087 @@
+  ;
+;begining of the program
+;
+; In the body of the program are routines that appear to load over the
+;  top of the following code.  This was probably done to conserve memory
+;  space.
+;
+;==============================================================================
+	psect	5000h
+   	jp	RTIN20	
+;==============================================================================
+;
+	defb	0ah
+	defm	'TRS/Z-NUT z80 control program'
+	defb	0ah
+	defm	'RDP 1/3/83'
+	defb	0ah
+	defm	'Copyright (C) 1983 Microshaft Corporation All Rights Refused'
+	defb	0ah
+	defm	'Unlicensed by Samsung Corporation'
+	defb	0ah
+;==============================================================================
+;
+RTIN20 	di			;disable the z80 interrupts
+	ld	sp,17c1h	;initialize the stack pointer
+	ld	hl,180h		
+	ld	de,181h
+	ld	bc,1641h
+	ld	(hl),0
+	ldir			;initialize memory from 181h to 17c2
+				; with zeros
+	ld	hl,17c2h
+	ld	de,17c3h
+	ld	bc,383dh
+	ld	(hl),0ffh
+	ldir			;initialize memory from 17c3 to 4fff
+				;with ones
+				;
+				;
+	ld	a,0c3h		;load 'a' with 1100 0011b, c3h
+	ld	(38h),a		;stick c3h into memory location 38h
+	ld	hl,B23		;load hl with 
+	ld	(39h),hl
+	ld	a,80h
+	ld	(17fh),a
+	out	(0ffh),a	;enable the video ram
+	ld	a,4
+	ld	(15eh),a
+	out	(0deh),a	;0000 0100, reset 68k CPU
+	ld	a,0
+	ld	(15fh),a
+	out	(0dfh),a	;clear upper address latch for z80
+	ld	de,(8006h)
+	ld	a,0ch
+	ld	(15eh),a
+	out	(0deh),a	;0000 1100, halt and reset 68k CPU
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
+	ex	(sp),hl
+	ld	a,0
+	ld	(15eh),a
+	out	(0deh),a	;turn on 68k CPU
+;
+JP1	ld	hl,(8006h)
+	or	a
+	sbc	hl,de
+	jr	z,JP1	
+	ld	de,(8006h)
+	ld	l,d
+	ld	h,e
+	set	7,h
+	res	6,h
+	ld	(191h),hl
+	ld	hl,(191h)
+	ld	de,1c2h
+	add	hl,de	
+	ld	a,(77h)
+	ld	(hl),a
+	nop
+	nop
+	nop
+	call	RTIN23		;initialize z80 interrupt table
+	call	RTIN24		;initialize the DMA
+	call	RTIN25		;
+	call	RTIN26		;initialize PIO and FDC
+	call	RTIN27		;initialize HD CTC and HD Controller
+	call	RTIN28		;initialize, Multi-Term board, z80
+				; CTC, SIO, PIO
+	call	RTIN29		;
+	call	RTIN30		;
+	jr	JP2	
+;
+	defm	'<< *** Version 2.0.0 *** >>'
+	defb	0ah
+	defb	0dh
+	defb	00h
+;=============================================================================
+;
+JP2	ld	hl,0
+	ld	(8006h),hl
+	ei		
+	jr	JP3	
+;------------------------------------------------------------------------------
+B1	defb	00h
+B2	defb	00h
+B3     	defb	00h
+B4    	defb	00h
+;----------------------
+;
+JP3	call	RTIN31
+	ld	iy,(19bh)
+	ld	a,(2e4h)
+	or	a
+	jr	z,JP4
+	ld	a,(B1)
+	ld	b,a
+	ld	a,(iy+0)
+	sub	b
+	jp	m,JP5
+	call	RTIN21
+	jr	JP5	
+;
+JP4	ld	a,(B1)
+	ld	b,a
+	ld	a,(B2)
+	sub	b
+	call	p,RTIN21
+;
+JP5	call	RTIN32
+	call	RTIN33
+	call	RTIN34
+	call	RTIN35
+	call	RTIN36
+	call	RTIN37
+	call	RTIN38
+	call	RTIN39
+	jp	JP3	
+;==============================================================================
+;
+RTIN21	ld	iy,(19bh)
+	ld	b,(iy+0)
+	ld	a,(iy+1)
+	cp	b
+	ret	z
+;
+	inc	a
+	push	af	
+	push	iy
+	pop	de	
+	ld	hl,2
+	add	hl,de	
+	ex	de,hl	
+	and	1fh
+	ld	l,a
+	ld	h,0
+	add	hl,hl
+	add	hl,de	
+	call	RTIN22
+	pop	af	
+	ld	(iy+1),a
+	ld	hl,B1
+	inc	(hl)
+	jp	RTIN21	
+;==============================================================================
+;
+RTIN22 	ld	a,(hl)
+	push	af	
+	rrca		
+	rrca		
+	rrca		
+	rrca		
+	and	0fh
+	cp	7
+	call	nc,RTIN40
+	rlca		
+	ld	b,a
+	rlca		
+	add	a,b
+	ld	e,a
+	inc	hl
+	ld	a,(hl)
+	or	a
+	call	m,RTIN41
+	cp	3
+	call	nc,RTIN42
+	rlca		
+	add	a,e
+	ld	e,a
+	ld	d,0	
+	pop	af	
+	and	0fh
+	ld	hl,TABL1
+	add	hl,de	
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl	
+	call	RTIN43
+	ret		
+;==============================================================================
+RTIN41	call	RTIN71
+;
+	defm	'<< *** DIAG:QOVFLW *** >>'
+	nop
+	ret		
+;==============================================================================
+RTIN40	call	RTIN71
+;
+	defm	'<< *** DIAG:BADMAJ *** >>'
+	nop
+	ret		
+;==============================================================================
+RTIN42	call	RTIN71
+;
+	defm	'<< *** DIAG:BADCMD *** >>'
+	nop
+	ret		
+;==============================================================================
+;
+TABL1	defw	RTIN44
+	defw	RTIN45
+	defw	RTIN46
+	defw	RTIN47
+	defw	RTIN48
+	defw	RTIN49
+	defw	RTIN50
+	defw	RTIN51
+	defw	RTIN52
+	defw	RTIN53
+	defw	RTIN53
+	defw	RTIN53
+	defw	RTIN54
+	defw	RTIN55
+	defw	RTIN56
+	defw	RTIN57
+	defw	RTIN58
+	defw	RTIN59
+	defw	RTIN60
+	defw	RTIN61
+	defw	RTIN62
+;------------------------------------------------------------------------------
+;
+RTIN60	ld	hl,B5
+	inc	(hl)
+	ret		
+;==============================================================================
+;
+RTIN61	ld	a,0a1h
+	jp	JP10	
+;==============================================================================
+;
+RTIN62	ld	a,0a2h
+	jp	JP10	
+;==============================================================================
+;
+RTIN44	ld	hl,B6
+	inc	(hl)
+	ret		
+;==============================================================================
+;
+RTIN46	ld	a,0d1h
+	jp	JP10	
+;==============================================================================
+;
+RTIN45	ld	a,0d2h
+	jp	JP10	
+;==============================================================================
+;
+RTIN47	ld	hl,B7
+	inc	(hl)
+	ret		
+;==============================================================================
+;
+RTIN49	ld	a,0d3h
+	jp	JP10	
+;==============================================================================
+;
+RTIN48	ld	a,0d4h
+	jp	JP10	
+;==============================================================================
+;
+RTIN50	ld	hl,B8
+	jr	JP11	
+;==============================================================================
+;
+RTIN52	ld	hl,B9
+	jr	JP11	
+;==============================================================================
+;
+RTIN51	ld	hl,B10
+;
+JP11	ld	e,a
+	ld	d,0	
+	add	hl,de	
+	inc	(hl)
+	ret		
+;==============================================================================
+;
+RTIN54	ld	a,0c0h
+	jp	JP10	
+;==============================================================================
+;
+RTIN56	ld	hl,B11
+	ld	(hl),0ffh
+	ret		
+;==============================================================================
+;
+RTIN55	ld	hl,B11
+	ld	(hl),0
+	ret		
+;==============================================================================
+;
+RTIN57	ld	hl,B12
+	jr	JP11	
+;==============================================================================
+;
+RTIN58	ld	a,0b1h
+	jr	JP10	
+;==============================================================================
+;
+RTIN59	ld	a,0b2h
+	jr	JP10	
+;==============================================================================
+;
+RTIN53	ld	a,0a0h
+	jr	JP10	
+;==============================================================================
+;
+JP10	call	RTIN64
+;
+	defm	'<<  *** DIAG:BDRQ'
+	nop
+	call	RTIN65
+	call	RTIN64
+	defm	' *** >>'
+	defb	0ah
+	nop
+	ret		
+;==============================================================================
+;
+B11	defb	00h
+B6	defb	00h
+B7	defb	00h	;keep track of the current HD MSB of the cylinder
+B12	defb	00h
+B42	defb	00h
+B5	defb	00h
+B8	defb	00h
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+B9	defb	00h
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+B10	defb	00h
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+;==============================================================================
+;
+RTIN29	call	RTIN31
+	ld	de,(191h)
+	ld	hl,180h
+	add	hl,de	
+	ld	(19bh),hl
+	ld	de,0
+	add	hl,de	
+	ld	a,(hl)
+	ld	(B2),a
+	inc	a
+	ld	(B1),a
+	ld	a,(B21)
+	ld	b,1eh	
+	add	a,b
+	ld	(B3),a
+	ret		
+;==============================================================================
+;
+RTIN84	push	af	
+	push	de	
+	push	hl	
+	call	RTIN76
+	ld	a,(15eh)
+	ld	d,a
+	ld	a,(15fh)
+	ld	e,a
+	call	RTIN31
+	ld	hl,(19bh)
+	ld	a,(hl)
+	ld	(B2),a
+	ld	a,e
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,d
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	af	
+	ei		
+	ret		
+;==============================================================================
+;
+RTIN71	di		
+	ld	a,0ffh
+	out	(0efh),a	;Select drive, mode, and side
+	ld	a,4
+	ld	(15eh),a
+	out	(0deh),a	;0000 0100, halt 68k CPU
+	ld	a,80h
+	ld	(17fh),a
+	out	(0ffh),a	;enable video ram, enable video display
+				;disable RTC interrupt, enable 80 char.
+				;mode, select memory bank one.
+;
+	call	RTIN72
+	call	RTIN64
+	defb	0dh
+	defb	0ah
+	defb	1bh
+	defb	52h
+	defb	44h
+	defm	' z80 panic: '
+	nop
+	ex	(sp),hl
+;
+JP20	ld	a,(hl)
+	inc	hl
+	or	a
+	jr	z,JP21
+	call	RTIN67
+	jr	JP20	
+;
+JP21	call	RTIN64
+	defb	1bh
+	defb	52h
+	defb	40h
+	nop
+	call	RTIN64
+	defb	0dh
+	defb	0ah
+	nop
+	ex	(sp),hl
+	jp	JP22	
+;
+;==============================================================================
+RTIN72	call	RTIN64
+	defb	1bh
+	defb	59h
+	defb	37h
+	defb	0ah
+	defb	0dh
+	nop
+	ret		
+;==============================================================================
+;
+RTIN73	call	RTIN64
+	defb	0ah
+	defb	0dh
+	nop
+;==============================================================================
+;
+RTIN74	call	RTIN64
+	defb	1bh
+	defb	52h
+	defb	44h
+	nop
+;
+	ex	(sp),hl
+JP25	ld	a,(hl)
+	inc	hl
+	or	a
+	jr	z,JP23
+	call	RTIN67
+	jr	JP25	
+;
+JP23	ex	(sp),hl
+	call	RTIN64
+	defb	1bh
+	defb	52h
+	defb	40h
+	nop
+	ret		
+;==============================================================================
+;
+B23	di
+	call	RTIN72
+	call	RTIN64
+	defm	'<< *** DIAG:00RST7 *** >>'
+	nop
+	jp	JP22	
+;
+JP22	call	RTIN72
+	call	RTIN73
+	defm	' system halted. '
+	nop
+;
+JP24   	halt
+	jr	JP24	
+RTIN136	ret		
+;==============================================================================
+;
+RTIN83	call	RTIN71
+	defm	'Unknown z80 interrupt.'
+	nop
+	push	de	
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl	
+	pop	de	
+;==============================================================================
+;
+RTIN43	jp	(hl)	
+;==============================================================================
+;
+RTIN76	reti			;return and clear the interrupt
+;==============================================================================
+;
+RTIN23	im	2		;set the z80 interrupt mode to 2
+	ld	a,7ah
+	ld	i,a
+	ld	b,4	
+JP26	call	RTIN76
+	djnz	JP26		;decrement b to zero before proceeding
+	ld	bc,34h
+	ld	hl,TABL3
+	ld	de,7a00h
+	ldir			;copy from 544e-5481 to 7a00-7a33
+	ret		
+;==============================================================================
+;
+TABL3	defw	RTIN86
+	defw	RTIN87
+	defw	RTIN88
+	defw	RTIN83	
+	defw	RTIN89
+	defw	RTIN90
+	defw	RTIN91
+	defw	RTIN83	
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN92
+	defw	RTIN83
+	defw	RTIN84
+	defw	RTIN83
+	defw	RTIN93
+	defw	RTIN85
+	defw	RTIN83
+	defw	RTIN83
+	defw	RTIN83
+	defw	RTIN82
+	defw	RTIN95
+;
+	defb	0adh
+	defb	0bbh
+	defb	0afh
+	defb	0b4h
+	defb	0abh
+	defb	0bdh
+;------------------------------------------------------------------------------
+;
+;==============================================================================
+;	PIO Initialization
+;------------------------------------------------------------------------------
+RTIN26	call	RTIN31
+	ld	hl,RTIN77
+	ld	(2fdh),hl
+	xor	a
+	ld	(303h),a
+	ld	(305h),a
+	ld	(304h),a
+	ld	ix,8
+	ld	de,(191h)
+	add	ix,de
+	ld	(197h),ix
+	ld	(ix+14h),a
+	dec	a
+	ld	(2eah),a
+	ld	iy,30ch
+	ld	de,0ah
+	ld	b,4	
+JP28	ld	(iy+0),0
+	ld	(iy+1),0
+	add	iy,de
+	djnz	JP28
+	ld	hl,TABL4
+	jp	JP27	
+;
+;------------------------------------------------------------------------------
+;	PIO Initialization Table
+;
+TABL4	defb	0efh	;drive, mode, side select
+	defb	0ffh	;FM Mode, Side 0, No drives selected
+	defb	0e4h	;FDC Status and command register
+	defb	0d0h	;1101 0000, force an interrupt from the FDC
+	defb	0e2h	;PIO Port A
+	defb	30h	;0011 0000, Interrupt vector 30h
+	defb	0e2h	;PIO Port A
+	defb	0cfh	;1100 1111, Mode 3 operation of the PIO
+	defb	0e2h	;PIO Port A
+	defb	0f7h	;1111 0111, I/O Register Control Word
+	defb	0e2h	;PIO Port A
+	defb	0b7h	;1011 0111, Mask Word follows, Active high, Interrupt on or
+			;           function, Interrupt enabled
+	defb	0e2h	;PIO Port A
+	defb	0feh	;1111 1110, Mask bit 0.
+	defb	00h
+;==============================================================================
+;
+;==============================================================================
+;Potential jump based on conditions from 22nd(548e)
+;------------------------------------------------------------------------------
+RTIN77	call	RTIN71
+	defb	0ah
+	defb	0dh
+	defm	'Unexpected floppy interrupt'
+	nop
+JP29	jr	JP29	
+;==============================================================================
+;
+RTIN33	ld	a,(B6)
+	or	a
+	ret	z
+	ld	a,(303h)
+	or	a
+	jr	nz,JP30		 
+	call	RTIN78
+	jr	nz,JP31		 
+	call	RTIN31
+	ld	ix,(197h)
+	bit	0,(ix+14h)	
+	jr	z,JP32
+	di		
+	ld	a,0ffh
+	ld	(303h),a
+	ld	hl,B6
+	dec	(hl)
+	ld	a,4
+	ld	(300h),a
+	ld	a,4
+	ld	(302h),a
+	ei		
+	call	RTIN79
+	di		
+	call	z,RTIN80
+	ei		
+	ret		
+;
+JP30	call	RTIN64
+	defm	'<< *** DIAG:0FDBSY *** >>'
+	defb	0ah
+	defb	0dh
+	nop
+	jr	JP33	
+;
+JP31	call	RTIN64
+	defm	'<< *** DIAG:0FDLCK *** >>'
+	defb	0ah
+	defb	0dh
+	nop
+	jr	JP33	
+;
+JP32	call	RTIN64
+	defm	'<< **** DIAG:0FDNGO *** >>'
+	defb	0ah
+	defb	0dh
+	nop
+;
+JP33	ld	hl,B6
+	ld	(hl),0
+	ret		
+;==============================================================================
+;
+RTIN79	ld	(ix+17h),0
+	ld	a,(ix+14h)
+	ld	b,a
+	and	0ch
+	ld	(2e8h),a
+	ld	a,b
+	cpl
+	cp	(ix+15h)
+	jr	z,JP34
+;
+	call	RTIN71
+	defm	'<< *** DIAG:0FDCMD *** >>'
+	nop
+;
+JP34	ld	a,(2eah)
+	cp	(ix+16h)
+	jp	z,JP35
+	ld	a,(ix+16h)
+	cp	4
+	ld	b,20h	
+	jp	nc,JP36
+	ld	b,0feh	
+	ld	iy,30ch
+	ld	de,0ah
+;
+JP38	or	a
+	jr	z,JP37
+	rlc	b
+	add	iy,de
+	dec	a
+	jr	JP38	
+;
+JP37	ld	a,b
+	or	40h
+	ld	a,a	
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side
+	ld	(2e6h),iy
+	ld	a,(iy+1)
+	out	(0e5h),a	;send current track address
+	ld	a,(ix+16h)
+	ld	(2eah),a
+;
+JP35	ld	iy,(2e6h)
+	in	a,(0e0h)	;printer and FCD int. status
+	and	4
+	jr	z,JP39
+	bit	2,(ix+19h)	
+	jr	z,JP39
+	ld	(iy+0),0
+	ld	b,0f7h	
+JP40	djnz	JP40
+	ld	a,0ffh
+	out	(0efh),a	;1111 1111 - FM Mode, Side 0, No drive
+				;selected. In other words, deselect
+				;the FDC
+	ld	b,0f7h	
+JP41	djnz	JP41		;hang around for a while
+	ld	a,(16fh)
+	out	(0efh),a	;Select drive, mode, and side
+;
+JP39	ld	a,(2e8h)
+	cp	0
+	jr	nz,JP42		 
+	ld	hl,1
+	ld	(2ebh),hl
+	ld	(2edh),hl
+	jp	JP43	
+;
+JP42	bit	0,(iy+0)	
+	ld	b,8	
+	jp	z,JP36
+	ld	h,(ix+4)
+	ld	l,(ix+5)
+	ld	(2ebh),hl
+	ld	(2edh),hl
+	ld	hl,631h
+	ld	(2f9h),hl
+	ld	(2fbh),hl
+	ld	a,(ix+7)
+	ld	(2f1h),a
+	ld	a,(ix+9)
+	ld	(2f3h),a
+	ld	a,(ix+0bh)
+	ld	(2efh),a
+	bit	1,(iy+9)	
+	jr	z,JP44
+	bit	0,(iy+9)	
+	jr	z,JP45
+	ld	a,(2f1h)
+	or	a
+	jr	nz,JP45		 
+	ld	a,(2f3h)
+	or	a
+	jr	nz,JP45		 
+;
+JP44	ld	a,(16fh)
+	and	7fh
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side
+	bit	0,(iy+9)	
+	jr	z,JP46
+	ld	hl,80h
+	ld	(2f5h),hl
+	ld	a,1ah
+	ld	(2f7h),a
+	jr	JP47	
+;
+JP45	ld	a,(16fh)
+	or	80h
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side
+;
+JP46	ld	h,(iy+5)
+	ld	l,(iy+4)
+	ld	(2f5h),hl
+	ld	a,(iy+6)
+	ld	(2f7h),a
+;
+JP47	ld	a,(2f3h)
+	cp	(iy+8)
+	ld	b,20h	
+	jp	nc,JP36
+	ld	a,(2f7h)
+	ld	c,a
+	ld	a,(2efh)
+	cp	c
+	jp	nc,JP36
+	ld	a,(2f1h)
+	cp	(iy+2)
+	jp	nc,JP36
+;
+JP43	xor	a
+	ld	(2e9h),a
+	ld	a,2dh
+	ld	(301h),a
+	ld	a,8
+	ld	(2ffh),a
+	ld	hl,RTIN96
+	ld	(2fdh),hl
+	xor	a
+	ret		
+;==============================================================================
+;
+RTIN81	ld	a,(303h)
+	or	a
+	jr	nz,JP48		 
+	ld	a,(302h)
+	or	a
+	jr	z,JP49
+	dec	a
+	ld	(302h),a
+	jr	nz,JP49		 
+	ld	a,0ffh
+	ld	(2eah),a
+	ld	a,0ffh
+	ld	(16fh),a
+	out	(0efh),a	;Deselect drive (FD)
+	jr	JP49	
+;
+JP48	push	ix
+	push	iy
+	ld	ix,(197h)
+	ld	iy,(2e6h)
+	ld	a,(300h)
+	dec	a
+	ld	(300h),a
+	ld	b,4	
+	call	z,JP36
+	pop	iy
+	pop	ix
+;
+JP49	ret		
+;==============================================================================
+;
+RTIN82	push	af	
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	push	iy
+	ld	a,(15eh)
+	ld	h,a
+	ld	a,(15fh)
+	ld	l,a
+	push	hl	
+	call	RTIN76
+	xor	a
+	ld	(305h),a
+	call	RTIN80
+	pop	hl	
+	ld	a,l
+	ld	(15fh),a
+	out	(0dfh),a	;z80 Upper Address Latch
+	ld	a,h
+	ld	(15eh),a
+	out	(0deh),a	;z80 / 68k control port
+	pop	iy
+	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ei		
+	ret		
+;==============================================================================
+;
+RTIN80	call	RTIN31
+	ld	ix,(197h)
+	ld	iy,(2e6h)
+	ld	hl,(2fdh)
+	call	RTIN43
+	ld	a,4
+	ld	(302h),a
+	ld	a,4
+	ld	(300h),a
+	ld	hl,(2ebh)
+	ld	a,h
+	or	l
+	ret	nz
+;
+	ld	hl,(2edh)
+	ld	a,h
+	or	l
+	ret	nz
+;
+	jr	JP50	
+;
+JP50	ld	a,i
+	push	af	
+	di		
+	ld	hl,0
+	ld	(2ebh),hl
+	ld	(2edh),hl
+	ld	a,(303h)
+	or	a
+	jr	z,JP51
+	xor	a
+	ld	(303h),a
+	set	5,(ix+14h)	
+	res	0,(ix+14h)	
+	ld	ix,(191h)
+	ld	de,4
+	add	ix,de
+	inc	(ix+2)
+	ld	a,(15eh)
+	or	20h
+	out	(0deh),a
+	and	0dfh
+	out	(0deh),a
+;
+JP51	call	RTIN24
+	pop	af	
+	jp	po,JP52
+	ei		
+;
+JP52	or	0ffh
+	ret		
+;==============================================================================
+;
+JP36   	di		
+	ld	a,(16fh)
+	ld	(ix+1ah),a
+	in	a,(0e5h)	;Current track address of FDC
+	ld	(ix+7),a
+	ld	a,(2f3h)
+	ld	(ix+9),a
+	in	a,(0e6h)	;Current sector address of FDC
+	ld	(ix+0bh),a
+	ld	a,b
+	cp	4
+	jr	nz,JP53		 
+	ld	a,0d0h
+	ld	(164h),a
+	out	(0e4h),a	;FDC Command 1101 0000 - FORCE INT.
+				;but terminate w/o an interrupt
+	ld	a,0ffh
+	ld	(2eah),a
+	ld	a,a	
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side
+;
+JP53	ld	(ix+17h),b
+	set	6,(ix+14h)	
+	ld	a,b
+	cp	1
+	jp	nz,JP50
+	ret		
+;==============================================================================
+;
+RTIN96	ld	hl,(2ebh)
+	ld	a,h
+	or	l
+	jp	z,JP77
+	ld	a,(303h)
+	or	a
+	ret	z
+;
+	in	a,(0e4h)	;get the FDC status
+	ld	(ix+1bh),a
+	and	80h
+	jr	z,JP55
+	bit	1,(ix+19h)	
+	jr	z,JP54
+	ld	hl,RTIN96
+	ld	(2fdh),hl
+	ld	a,(301h)
+	dec	a
+	ld	(301h),a
+	ld	hl,RTIN80
+	ld	a,02h
+	jp	nz,JP245
+;
+JP54	ld	b,4	
+	jp	JP36	
+;
+JP55	ld	a,(2e8h)
+	cp	0
+	jp	z,JP85
+	ld	a,(2f1h)
+	cp	(iy+1)
+	jp	nz,JP69
+	ld	a,(2e8h)
+	cp	8
+	jr	z,JP56
+	jr	JP57	
+;
+JP56	in	a,(0e4h)	;get the FDC status
+	and	40h
+	ld	b,010h	
+	jp	nz,JP36
+	ld	hl,(2f9h)
+	ld	de,(2fbh)
+	or	a
+	sbc	hl,de
+	jp	z,JP77
+	ld	hl,(2f9h)
+	call	RTIN97
+	ld	b,0a0h	
+	jp	JP60	
+;
+JP57	ld	hl,(2f9h)
+	ld	de,(2f5h)
+	add	hl,de	
+	ld	b,h
+	ld	c,l
+	ld	de,(2fbh)
+	or	a
+	sbc	hl,de
+	jr	z,JP58
+	ld	hl,0c00h
+	add	hl,de	
+	or	a
+	sbc	hl,bc
+;
+JP58	jp	z,JP77
+	ld	hl,(2f9h)
+	call	RTIN98
+	ld	b,80h	
+	jr	JP60	
+;
+JP59	ld	hl,1231h
+	call	RTIN98
+	ld	b,80h	
+	jr	JP60	
+;
+JP60	ld	a,(2efh)
+	inc	a
+	out	(0e6h),a	;update current FDC sector address
+	ld	hl,JP63
+	ld	(2fdh),hl
+	ld	a,(2f3h)
+	or	a
+	jr	z,JP61
+	ld	a,(16fh)
+	and	0bfh
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	a,0ah
+	jr	JP62	
+;
+JP61	ld	a,(16fh)
+	or	40h
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	a,02h
+;
+JP62	ld	a,b
+	ld	(164h),a
+	out	(0e4h),a	;FDC Command 0000 0010, RESTORE Unload
+				;head at beginning, No verify, 10ms seek
+	ld	a,0ffh
+	ld	(305h),a
+	jp	JP77	
+;==============================================================================
+;
+JP63	in	a,(0e4h)	;get the status from the FDC
+	ld	(ix+1bh),a
+	ld	c,a
+	and	9ch
+	jr	z,JP64
+	xor	a
+	ld	(2e9h),a
+	bit	7,c
+	ld	b,4	
+	jp	nz,JP36
+	ld	a,(2ffh)
+	dec	a
+	ld	(2ffh),a
+	ld	b,2	
+	jp	z,JP36
+	cp	6
+	jp	z,JP72
+	jp	RTIN96	
+;
+JP64	ld	a,(2e8h)
+	cp	8
+	jr	nz,JP65		 
+	bit	0,(ix+19h)	
+	jr	z,JP65
+	ld	a,(2e9h)
+	xor	0ffh
+	ld	(2e9h),a
+	jp	nz,JP59
+;
+JP65	ld	a,(2ffh)
+	cp	3
+	jr	nc,JP66
+	ld	b,1	
+	call	JP36
+;
+JP66	ld	hl,(2ebh)
+	dec	hl
+	ld	(2ebh),hl
+	ld	a,h
+	or	l
+	jr	z,JP67
+	ld	a,8
+	ld	(2ffh),a
+	ld	a,(2f7h)
+	ld	b,a
+	ld	a,(2efh)
+	inc	a
+	ld	(2efh),a
+	cp	b
+	jr	c,JP67
+	xor	a
+	ld	(2efh),a
+	ld	a,(2f3h)
+	inc	a
+	ld	(2f3h),a
+	cp	(iy+8)
+	jr	c,JP67
+	xor	a
+	ld	(2f3h),a
+	ld	a,(2f1h)
+	inc	a
+	ld	(2f1h),a
+	cp	(iy+2)
+	jr	c,JP67
+	ld	b,20h	
+	jp	JP36	
+;
+JP67	ld	hl,(2f9h)
+	ld	de,(2f5h)
+	add	hl,de	
+	ld	(2f9h),hl
+	ld	de,1231h
+	or	a
+	sbc	hl,de
+	jr	c,JP68
+	ld	hl,631h
+	ld	(2f9h),hl
+;
+JP68	jp	RTIN96	
+;
+JP69	ld	a,(16fh)
+	or	40h
+	and	7fh
+	ld	b,a
+	bit	1,(iy+9)	
+	jr	z,JP71
+	ld	a,(2f1h)
+	or	a
+	jr	nz,JP70		 
+	bit	0,(iy+9)	
+	jr	nz,JP71		 
+;
+JP70	set	7,b
+;
+JP71	ld	a,b
+	out	(0efh),a	;Select drive, mode, and side
+	ld	a,(2f1h)
+	out	(0e7h),a	;send the data to the FDC drive.
+	ld	hl,JP74
+	ld	(2fdh),hl
+	ld	a,(ix+18h)
+	or	1ch
+	ld	a,a	
+	ld	(164h),a
+	out	(0e4h),a	;send a command to the FDC
+	ld	a,0ffh
+	ld	(305h),a
+	jp	JP77	
+;
+JP72	ld	a,(16fh)
+	or	40h
+	and	7fh
+	ld	b,a
+	bit	1,(iy+9)	
+	jr	z,JP73
+	bit	0,(iy+9)	
+	jr	nz,JP73		 
+	set	7,b
+;
+JP73	ld	a,b
+	out	(0efh),a	;Select drive, mode and side (fdc)
+	ld	hl,JP74
+	ld	(2fdh),hl
+	ld	a,(ix+18h)
+	or	0ch
+	ld	a,a	
+	ld	(164h),a
+	out	(0e4h),a	;send a command to the FDC
+	ld	a,0ffh
+	ld	(305h),a
+	jp	JP77	
+;==============================================================================
+;
+JP74	ld	a,(16fh)
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	in	a,(0e4h)	;get the FDC status
+	ld	(ix+1bh),a
+	ld	c,a
+	and	98h
+	jr	z,JP75
+	xor	a
+	ld	(2e9h),a
+	bit	7,c
+	ld	b,4	
+	jp	nz,JP36
+	ld	a,(2ffh)
+	dec	a
+	ld	(2ffh),a
+	cp	6
+	jp	z,JP72
+	or	a
+	jp	nz,JP69
+	ld	b,2	
+	jp	JP36	
+;
+JP75	ld	a,(2e9h)
+	xor	0ffh
+	ld	(2e9h),a
+	jp	nz,JP69
+	in	a,(0e5h)	;get the current track address (fdc)
+	ld	(iy+1),a
+	ld	bc,0a00h
+;
+JP76	dec	bc
+	ld	a,c
+	or	b
+	jr	nz,JP76		 
+	jp	RTIN96	
+;
+JP77	ld	a,(304h)
+	or	a
+	ret	nz
+;
+JP78	ld	a,(2e8h)
+	cp	4
+	jr	z,JP79
+	cp	0
+	ret	z
+;
+	ld	hl,(2edh)
+	ld	a,h
+	or	l
+	ret	z
+;
+	ld	hl,(2fbh)
+	ld	de,(2f5h)
+	add	hl,de	
+	ld	b,h
+	ld	c,l
+	ld	de,(2f9h)
+	or	a
+	sbc	hl,de
+	ret	z
+;
+	ld	hl,0c00h
+	add	hl,de	
+	or	a
+	sbc	hl,bc
+	ret	z
+;
+	jr	JP80	
+;
+JP79	ld	hl,(2f9h)
+	ld	de,(2fbh)
+	or	a
+	sbc	hl,de
+	ret	z
+;
+JP80	ld	a,1
+	ld	(304h),a
+	ld	bc,(2f5h)
+	ld	hl,(2fbh)
+	ei		
+	ld	a,(2e8h)
+	cp	4
+	jr	nz,JP81		 
+	call	RTIN99
+	jr	JP82	
+;
+JP81	call	RTIN100
+;
+JP82	di		
+	xor	a
+	ld	(304h),a
+	ld	hl,(2edh)
+	dec	hl
+	ld	(2edh),hl
+	ld	de,(2f5h)
+	ld	l,(ix+3)
+	ld	h,(ix+2)
+	add	hl,de	
+	ld	(ix+3),l
+	ld	(ix+2),h
+	jr	nc,JP83
+	inc	(ix+1)
+;
+JP83	ld	hl,(2fbh)
+	add	hl,de	
+	ld	(2fbh),hl
+	ld	de,1231h
+	or	a
+	sbc	hl,de
+	jr	c,JP84
+	ld	hl,631h
+	ld	(2fbh),hl
+;
+JP84	ld	a,(305h)
+	or	a
+	jp	z,RTIN96
+	jp	JP78	
+;
+JP85	ld	(iy+9),0
+	ld	hl,RTIN101
+	ld	(2fdh),hl
+	ld	a,0eh
+	out	(0e4h),a	;FDC Command 0000 1110, RESTORE - load
+				;head at beginning, Verify destination
+				;track, and 10ms seek rate
+	ret		
+;==============================================================================
+;
+RTIN101	in	a,(0e4h)	;get the FDC status
+	and	40h
+	jr	z,JP86
+	set	4,(iy+9)	
+;
+JP86	ld	a,(16fh)
+	and	7fh
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	a,(16fh)
+	or	40h
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	hl,RTIN102
+	ld	(2fdh),hl
+	ld	hl,306h
+	call	RTIN98
+	ld	a,0c0h
+	out	(0e4h),a	;FDC Command 1100 0000, READ ADDRESS -
+				;No delay
+	ret		
+;==============================================================================
+;
+RTIN102	in	a,(0e4h)	;get the FDC status
+	and	9ch
+	jr	z,JP88
+	ld	hl,JP87
+	ld	(2fdh),hl
+	ld	a,(16fh)
+	or	80h
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	hl,306h
+	call	RTIN98
+	ld	a,0c0h
+	out	(0e4h),a	;FDC Command 1100 0000, READ ADDRESS -
+				;No delay
+	ret		
+;
+JP87	in	a,(0e4h)	;get the FDC status
+	and	9ch
+	ld	b,2	
+	jp	nz,JP36
+	set	1,(iy+9)	
+	jp	JP93	
+;
+JP88	ld	a,(309h)
+	ld	(B43),a
+	ld	a,1
+	out	(0e7h),a	;send data to the FD drive
+	ld	hl,JP89
+	ld	(2fdh),hl
+	ld	a,1bh
+	out	(0e4h),a	;FDC Command 0001 1011, SEEK -
+				;load head at beginning, No verify,
+				;15ms seek rate
+	ret		
+;
+JP89	in	a,(0e4h)	;get the FDC status
+	inc	(iy+1)
+	ld	hl,JP90
+	ld	(2fdh),hl
+	ld	a,(16fh)
+	or	80h
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	hl,306h
+	call	RTIN98
+	ld	a,0c0h
+	out	(0e4h),a	;FDC Command 1100 0000, READ ADDRESS -
+				;No delay
+	ret		
+;
+JP90	in	a,(0e4h)	;get the FDC status
+	and	9ch
+	jr	z,JP92
+	ld	hl,JP91
+	ld	(2fdh),hl
+	ld	a,(16fh)
+	and	7fh
+	ld	(16fh),a
+	out	(0efh),a	;Select drive, mode, and side (fdc)
+	ld	hl,306h
+	call	RTIN98
+	ld	a,0c0h
+	out	(0e4h),a	;FDC Command 1100 0000, READ ADDRESS -
+				;No delay
+	ret		
+;
+JP91	in	a,(0e4h)	;get the FDC status
+	and	9ch
+	ld	b,2	
+	jp	nz,JP36
+	jr	JP93	
+;
+JP92	ld	a,(B43)
+	or	a
+	ld	b,2	
+	jp	nz,JP36
+	set	0,(iy+9)	
+	set	1,(iy+9)	
+;
+JP93	ld	a,(309h)
+	ld	b,a
+	inc	b	
+	ld	hl,40h
+JP310	add	hl,hl
+	djnz	JP310
+	ld	(iy+4),l
+	ld	(iy+5),h
+	bit	1,(iy+9)	
+	ld	hl,B44
+	jr	z,JP94
+	ld	hl,B45
+;
+JP94	ld	c,a
+	ld	b,0	
+	add	hl,bc	
+	ld	a,(hl)
+	ld	(iy+6),a
+	ld	(iy+2),4dh
+	ld	(iy+3),0
+	ld	(ix+0dh),4dh
+	ld	(ix+0ch),0
+	ld	a,(iy+4)
+	ld	(ix+0fh),a
+	ld	a,(iy+5)
+	ld	(ix+0eh),a
+	ld	a,(iy+6)
+	ld	(ix+11h),a
+	ld	(ix+010h),0
+	in	a,(0e4h)	;get the FDC status
+	in	a,(0e0h)	;get the printer and FDC int. status
+	and	2
+	ld	a,1
+	jr	z,JP95
+	inc	a
+;
+JP95	ld	(iy+8),a
+	ld	(ix+12h),a
+	ld	a,(iy+9)
+	ld	(ix+13h),a
+	ld	hl,0
+	ld	(2ebh),hl
+	ld	(2edh),hl
+	ld	(iy+0),1
+	ld	a,0
+	ld	(164h),a
+	ret		
+;==============================================================================
+;
+B43	defb	00h
+B44	defb	1ah
+	defb	0dh
+	defb	08h
+	defb	04h
+B45	defb	34h
+	defb	1ah
+	defb	10h
+	defb	08h
+;
+;==============================================================================
+;	Initialize Hard Drive CTC
+;------------------------------------------------------------------------------
+RTIN27	call	RTIN31
+	ld	ix,24h
+	ld	de,(191h)
+	add	ix,de
+	ld	(199h),ix
+	xor	a
+	ld	(347h),a
+	ld	(ix+14h),a
+	dec	a
+	ld	(339h),a
+	ld	hl,RTIN103
+	ld	(343h),hl
+	ld	a,0ah
+	ld	(346h),a
+	call	RTIN104
+	ld	hl,TABL7
+	call	JP27
+	ld	iy,349h
+	ld	de,0bah
+	ld	b,4	
+JP96	ld	(iy+0),0
+	add	iy,de
+	djnz	JP96
+	ret		
+;------------------------------------------------------------------------------
+;This is another table
+TABL7	defb	0c1h	;write HD port 1
+	defb	0eh	;0000 1110, Enable interrupts, enable acess to controller, 
+			;reset the controller
+	defb	0c4h	;HD Channel 0 CTC
+	defb	28h	;0010 1000, Disable interrupts, Timer mode, value of 256, 
+			;select falling edge of clk/trg, clk/trg pulse
+			;starts timer, no time constant follows, continue
+			;operation, vector
+	defb	0c4h	;HD Channel 0 CTC
+	defb	03h	;0000 0011, Time constant value
+	defb	00h
+;==============================================================================
+;
+RTIN34	ld	hl,B7
+	ld	a,(hl)
+	or	a
+	ret	z
+;
+	ld	a,(347h)
+	or	a
+	jp	nz,JP101
+	call	RTIN31
+	ld	ix,(199h)
+	in	a,(0cfh)	;get the HD controller status
+	bit	7,a
+	jp	nz,JP107	;jump if the HD controller is busy
+	bit	1,a
+	jp	nz,JP105	;jump if the CIP bit, in the HD
+				;controller, is set
+	bit	0,(ix+14h)	
+	jp	z,JP104
+	di		
+	ld	a,1
+	ld	(347h),a
+	dec	(hl)
+	ld	(ix+17h),0
+	ld	a,(ix+14h)
+	ld	b,a
+	and	0ch
+	ld	(336h),a
+	ld	a,b
+	cpl
+	cp	(ix+15h)
+	jp	nz,JP102
+	ld	a,(339h)
+	ld	b,(ix+16h)
+	cp	b
+	jp	z,JP99
+	ld	a,b
+	cp	4
+	ld	b,20h	
+	jp	nc,JP119
+	ld	(339h),a
+	push	af	
+	ld	iy,349h
+	ld	de,0bah
+;
+JP97	or	a
+	jr	z,JP98
+	add	iy,de
+	dec	a
+	jr	JP97	
+;
+JP98	ld	(334h),iy
+	pop	af	
+	rlca		
+	rlca		
+	rlca		
+	or	20h
+	ld	a,a	
+	ld	(14eh),a
+	out	(0ceh),a	;update the SDH register in the HD
+				;controller
+	ld	h,(iy+18h)
+	ld	l,(iy+19h)
+	srl	h
+	rr	l
+	srl	h
+	rr	l
+	ld	a,l
+	ld	(348h),a
+	ld	a,a	
+	ld	(149h),a
+	out	(0c9h),a	;update the write pre-comp cylinder
+;
+JP99	ld	iy,(334h)
+	in	a,(0cfh)	;get the status of the HD controller
+	ld	(ix+1bh),a
+	push	af	
+	push	hl	
+	ld	hl,B46
+	call	RTIN152
+	pop	hl	
+	pop	af	
+	ld	b,4	
+	bit	1,a
+	jp	nz,JP105
+	and	40h
+	jp	z,JP106
+	ld	a,0aah
+	out	(0cah),a	;send the sector count to the HD
+				;controller. this is for multiple HD
+				;read/writes. in this case 170.
+	in	a,(0cah)	;get the sector count to read/write.
+	cp	0aah
+	jp	nz,JP103	;this better be a zero.
+	ld	a,1
+	out	(0cah),a	;send a sector count of 1 to the HD
+				;controller.
+	ei		
+	ld	hl,4
+	ld	(33bh),hl
+	ld	a,(336h)
+	cp	0
+	jr	z,JP100
+	bit	0,(iy+0)	
+	ld	b,8	
+	jp	z,JP119
+	ld	h,(ix+4)
+	ld	l,(ix+5)
+	ld	(33bh),hl
+	ld	h,(ix+6)
+	ld	l,(ix+7)
+	ld	(33fh),hl
+	ld	e,(iy+2)
+	ld	d,(iy+3)
+	or	a
+	sbc	hl,de
+	ld	b,20h	
+	jp	nc,JP119
+	ld	a,(ix+9)
+	ld	(341h),a
+	cp	(iy+8)
+	jp	nc,JP119
+	ld	a,(ix+0bh)
+	ld	(33dh),a
+	cp	(iy+6)
+	jp	nc,JP119
+	call	RTIN105
+;
+JP100	xor	a
+	ld	(338h),a
+	ld	a,0ah
+	ld	(346h),a
+	ld	a,4
+	ld	(345h),a
+	ld	hl,RTIN109
+	ld	(343h),hl
+	jp	RTIN108	
+;
+JP101	call	RTIN71
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:0HDBSY *** >>'
+	nop
+;
+JP102	call	RTIN71
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:HDXCSR *** >>'
+	nop
+;
+JP103	call	RTIN71
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:0HDCTC *** >>'
+	nop
+;
+JP104	call	RTIN64
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:0HDNGO *** >>'
+	nop
+	ld	hl,B7
+	ld	(hl),0
+	ret		
+;
+JP105	call	RTIN106
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:0HDCIP *** >>'
+	nop
+;
+JP106	call	RTIN106
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:'
+B46	defb	30h
+	defb	30h
+	defm	'HDNRDY *** >>'
+	nop
+;
+JP107	call	RTIN106
+	defb	0ah
+	defb	0dh
+	defm	'<< *** DIAG:HDHBSY *** >>'
+	nop
+;==============================================================================
+;
+RTIN106	pop	hl	
+	ld	(B26),hl
+	ld	a,010h
+	ld	(141h),a
+	out	(0c1h),a	;HD Control Port, 0001 0000, reset
+				; controller
+	call	RTIN107
+	out	(0c1h),a	;HD Control Port, 0001 0000, reset
+				; controller
+	call	RTIN107
+	out	(0c1h),a	;HD Control Port, 0001 0000, reset
+				; controller
+	call	RTIN107
+	out	(0c1h),a	;HD Control Port, 0001 0000, reset
+				; controller
+	call	RTIN107
+	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Cntl Port, 0000 1110, enable
+				;interrupts, enable access to the 
+				;controller
+	in	a,(0cfh)	;Read HD controller status
+	and	0c2h
+	xor	40h
+	jp	nz,JP109
+	xor	a
+	ld	(B7),a
+	out	(0cdh),a	;load the MSB of the cylinder to seek
+				;to, to the controller.
+	in	a,(0cch)	;get the current cylinder LSB
+	inc	a		;add one to it
+	out	(0cch),a	;send the cylinder LSB to the 1010
+	ld	a,1
+	out	(0cbh),a	;seek to sector 1
+	ld	a,(149h)
+	out	(0c9h),a	;setup write pre-comp cylinder
+	ld	a,(14eh)
+	out	(0ceh),a	;send the sector size, head number,
+				;and drive number to the controller
+	ld	hl,JP108
+	ld	(343h),hl
+	ld	a,0ah
+	ld	(346h),a
+	ld	a,70h
+	ld	(14fh),a
+	out	(0cfh),a	;HD command 0111 0000, seek at 35 micro
+				;seconds
+	ei		
+	ret		
+;
+JP108	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control Port, 0000 1110, enable
+				;interrupts, enable access to
+				;controller
+	in	a,(0cfh)	;get the controller status
+	and	0c2h
+	xor	40h
+	jp	nz,JP109
+	ld	b,4	
+	jp	JP119	
+;
+JP109	ld	hl,(B26)
+;
+JP110	ld	a,(hl)
+	or	a
+	jr	z,JP111
+	call	RTIN67
+	inc	hl
+	jr	JP110	
+;
+JP111	call	RTIN71
+	defb	0ah
+	defb	0dh
+	defm	'<< **** Z80 Bit the DUST **** >>'
+	nop
+;
+B26	defb	00h	;storage variable referenced by 34th(5f08)
+	defb	00h
+	defb	00h
+	defb	00h
+;==============================================================================
+;
+RTIN107	ld	b,28h	
+JP112	djnz	JP112
+	ret		
+;==============================================================================
+;
+RTIN85	push	af	
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	push	iy
+	ld	a,(15eh)
+	ld	h,a
+	ld	a,(15fh)
+	ld	l,a
+	push	hl	
+	call	RTIN76
+	ei		
+	call	RTIN108
+	di		
+	pop	hl	
+	ld	a,l
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,h
+	ld	(15eh),a
+	out	(0deh),a
+	pop	iy
+	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ei		
+	ret		
+;==============================================================================
+;
+RTIN151	ld	a,(347h)
+	or	a
+	jp	z,JP113
+	ld	a,(346h)
+	or	a
+	jp	z,JP113
+	ld	ix,(199h)
+	ld	iy,(334h)
+	dec	a
+	ld	(346h),a
+	jp	nz,JP113
+;
+	call	RTIN106
+	defb	0dh
+	defb	0ah
+	defm	'<< *** DIAG:HDETIME ***>>'
+	nop
+JP113	ret		
+;==============================================================================
+;
+RTIN108	call	RTIN31
+	ld	ix,(199h)
+	ld	iy,(334h)
+	ld	hl,(343h)
+	call	RTIN43
+	ld	a,0ah
+	ld	(346h),a
+	ld	hl,(33bh)
+	ld	a,h
+	or	l
+	ret	nz
+;
+	jr	RTIN103	
+;==============================================================================
+;
+RTIN103	di		
+	ld	a,(347h)
+	or	a
+	jr	z,JP114
+	xor	a
+	ld	(347h),a
+	ld	hl,0
+	ld	(33bh),hl
+	set	5,(ix+14h)	
+	res	0,(ix+14h)	
+	ld	ix,(191h)
+	ld	de,4
+	add	ix,de
+	inc	(ix+3)
+	ld	a,(15eh)
+	or	20h
+	out	(0deh),a
+	and	0dfh
+	out	(0deh),a
+JP114	ei		
+	ret		
+;==============================================================================
+;
+RTIN109	ld	hl,(33bh)
+	ld	a,h
+	or	l
+	ret	z
+;
+	bit	7,h
+	jp	nz,RTIN103
+	ld	a,(336h)
+	cp	0
+	jp	z,JP115
+	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control Register, 0000 1110, enable
+				;interrupts, enable controller
+	call	RTIN110
+	ld	a,(336h)
+	cp	4
+	jp	z,JP116
+	res	4,(ix+13h)	
+	ld	a,(339h)
+	ld	b,a
+	inc	b	
+	in	a,(0c0h)	;HD Write protect register (read only)
+	and	0f0h
+JP117	rlca		
+	djnz	JP117
+	jp	nc,JP118
+	set	4,(ix+13h)	
+	ld	b,010h	
+	jp	JP119	
+JP118	ld	a,0d7h
+	out	(0c4h),a	;HD CTC Channel 0, 1101 0111, enable
+				;interrupts, counter mode, value of 16
+				;rising edge of clk/trg, automatic 
+				;trigger when time constant is loaded,
+				;time constant follows, reset, control
+				;word
+	ld	a,1
+	out	(0c4h),a	;HD CTC Channel 0 time constant word
+	ld	hl,JP120
+	ld	(343h),hl
+	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	ld	a,30h
+	ld	(14fh),a
+	out	(0cfh),a	;HD Command 0011 0000 - write sector,
+				;retries enabled, transfer 1 sector
+	ld	l,0c8h
+	ld	bc,1ffh		;number of bytes to ship to hard drive
+	call	RTIN111		;routine that does it
+	ld	hl,1ffh
+	call	RTIN112
+	di		
+	ld	l,0c8h
+	ld	bc,1		;number of bytes to ship to hard drive
+	call	RTIN111		;routine that does it
+	ld	hl,1ffh
+	call	RTIN113
+	ret		
+;
+JP116	ld	a,0d7h
+	out	(0c4h),a	;HD CTC Channel 0, 1101 0111, enable
+				;interrupts, counter mode, value of 16
+				;rising edge of clk/trg, automatic 
+				;trigger when time constant is loaded,
+				;time constant follows, reset, control
+				;word
+	ld	a,1
+	out	(0c4h),a	;HD CTC Channel 0 time constant word
+	ld	hl,JP120
+	ld	(343h),hl
+	di		
+	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	ld	a,20h
+	ld	(14fh),a
+	out	(0cfh),a	;HD Command 0010 0000, read 1 sector,
+				;interrupt at BDRQ time, enable retries
+	ret		
+;==============================================================================
+;
+JP119	call	RTIN104
+	in	a,(0c9h)	;read the HD controlle error register
+	ld	(ix+1ah),a
+	in	a,(0cdh)	;get the MSB of the cylinder
+	ld	(ix+6),a
+	in	a,(0cch)	;get the LSB of the cylinder
+	ld	(ix+7),a
+	in	a,(0ceh)	;get the sector size, head number,
+				;and drive number
+	and	7
+	ld	(ix+9),a
+	in	a,(0cbh)	;get the sector number
+	ld	(ix+0bh),a
+	ld	(ix+17h),b
+	set	6,(ix+14h)	
+	ld	a,b
+	cp	1
+	ret	z
+;
+	ld	a,0ffh
+	ld	(339h),a
+	jp	RTIN103	
+;
+JP120	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	ld	a,(336h)
+	cp	8
+	ld	b,48h	
+	jr	nz,JP121		 
+	ld	b,40h	
+;
+JP121	in	a,(0cfh)	;get the HD controller status
+	ld	(ix+1bh),a
+	xor	b
+	and	41h
+	jp	z,JP122
+	call	RTIN104
+	xor	a
+	ld	(338h),a
+	ld	a,(345h)
+	dec	a
+	ld	(345h),a
+	jp	nz,RTIN109
+	ld	b,2	
+	jp	JP119	
+;
+JP122	ld	a,(336h)
+	cp	8
+	jr	nz,JP123		 
+	bit	0,(ix+19h)	
+	jr	z,JP123
+	ld	a,(338h)
+	xor	0ffh
+	ld	(338h),a
+	jp	nz,JP116
+	call	RTIN104
+;
+JP123	ld	a,(345h)
+	cp	3
+	jr	nc,JP124
+	ld	b,1	
+	call	JP119
+;
+JP124	ld	hl,(33bh)
+	dec	hl
+	ld	(33bh),hl
+	ld	a,(336h)
+	cp	0
+	jr	z,JP127
+	cp	4
+	jr	nz,JP125		 
+	push	hl	
+	ld	l,0c8h
+	ld	bc,200h
+	call	RTIN114		;we either read or write 512 bytes to
+				;the hard drive
+	pop	hl	
+	in	a,(0cfh)	;get the hard drive status
+	and	0c2h
+	xor	40h
+	jr	z,JP125
+;
+	call	RTIN106
+	defb	0dh
+	defb	0ah
+	defm	'<< *** DIAG:HDREAD *** >>>'
+	nop
+;
+JP125	ld	a,h
+	or	l
+	jr	z,JP127
+	ld	a,4
+	ld	(345h),a
+	ld	hl,200h
+	call	RTIN112
+	ld	a,(33dh)
+	inc	a
+	ld	(33dh),a
+	cp	(iy+6)
+	jr	c,JP126
+	xor	a
+	ld	(33dh),a
+	ld	a,(341h)
+	inc	a
+	ld	(341h),a
+	cp	(iy+8)
+	jr	c,JP126
+	xor	a
+	ld	(341h),a
+	ld	hl,(33fh)
+	inc	hl
+	ld	(33fh),hl
+	ld	e,(iy+2)
+	ld	d,(iy+3)
+	or	a
+	sbc	hl,de
+	ld	b,20h	
+	jp	nc,JP119
+;
+JP126	call	RTIN105
+;
+JP127	jp	RTIN109	
+	call	RTIN64
+	defb	20h
+	defb	0ah
+	defb	0dh
+	defm	'<<Busy or Cip at HDRdWrtIntr; status'
+	nop
+	call	RTIN65
+	call	RTIN64
+	defm	'>>'
+	defb	0ah
+	defb	0dh
+	nop
+	ld	b,4	
+	jp	JP119	
+;========================================
+;
+JP115	ld	a,(33bh)
+	ld	b,a
+	cp	0bh
+	jp	nc,JP128
+	add	a,a
+	ld	e,a
+	ld	d,0	
+	ld	hl,TABL8
+	add	hl,de	
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ex	de,hl	
+	jp	(hl)	
+;==============================================================================
+;
+;		ADDRESS
+TABL8	defw	JP128
+	defw	JP135
+	defw	JP134
+	defw	JP132
+	defw	JP129
+;------------------------------------------------------------------------------
+;
+JP128	call	RTIN72
+	call	RTIN64
+	defm	' << *** DIAG:HDSTAT *** >>'
+	defb	00h
+	call	JP22
+;
+JP129	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	call	RTIN104
+	ld	(ix+13h),0
+	ld	a,(339h)
+	ld	b,a
+	inc	b	
+	in	a,(0c0h)	;read the write protect register in the
+				;HD controller
+	and	0f0h
+JP130	rlca		
+	djnz	JP130
+	jr	nc,JP131
+	set	4,(ix+13h)	
+;
+JP131	bit	0,(iy+0)	
+	jp	nz,RTIN103
+;
+	jp	nz,RTIN103
+	in	a,(0cfh)	;get the HD controller status
+	bit	6,a
+	ld	b,4	
+	jp	z,JP119		;If the HD isn't ready then jump
+	ld	a,0aah
+	out	(0cah),a	;send a sector count of 177 to the
+				;HD controller
+	in	a,(0cah)	;read it back
+	cp	0aah		;is it the same
+	jp	nz,JP119	;if it wasn't then somethings wrong
+	ld	a,1
+	out	(0cah),a	;else correct the sector count by 
+				;sending a 1 to the HD controller
+	ld	hl,(33bh)
+	dec	hl
+	ld	(33bh),hl
+	ld	a,0d7h
+	out	(0c4h),a	;HD CTC Channel 0, 1101 0111, enable
+				;interrupts, counter mode, value of 16
+				;rising edge of clk/trg, automatic 
+				;trigger when time constant is loaded,
+				;time constant follows, reset, control
+				;word 
+	ld	a,1		
+	out	(0c4h),a	;HD CTC Channel 0 time constant
+	in	a,(0cch)	;get the LSB of the HD cylinder
+	inc	a		;increment it
+	out	(0cch),a	;send it to the HD
+	ld	hl,RTIN109
+	ld	(343h),hl
+	ld	a,70h
+	ld	(14fh),a
+	out	(0cfh),a	;HD Command 0111 0000, seek at 35 ms
+	ret		
+;==============================================================================
+;
+JP132	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+;
+JP133	in	a,(0cfh)	;get the HD controller status
+	and	11h
+	jr	z,JP133		;if an error occured during the seek
+				;then jump.
+	in	a,(0ceh)	;read the SDH register, sector size,
+				;head number, drive number
+	and	0f8h
+	ld	a,a	
+	ld	(14eh),a
+	out	(0ceh),a	;update the SDH register - sector size,
+				;head number, and drive number
+	xor	a
+	ld	a,a	
+	ld	(14ch),a
+	out	(0cch),a	;HD cylinder LSB
+	ld	a,a	
+	ld	(14dh),a
+	out	(0cdh),a	;HD cylinder MSB
+	inc	a
+	ld	a,a	
+	ld	(14bh),a
+	out	(0cbh),a	;load the HD controller with the sector
+				;number
+	jp	JP116	
+;
+JP134	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	push	iy
+	pop	hl	
+	ld	de,0ah
+	add	hl,de	
+	push	hl	
+	ld	bc,48c8h
+	inir			;get 72 bytes from the hard drive
+	pop	hl	
+	call	RTIN104
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ld	hl,702eh
+	or	a
+	sbc	hl,de
+	jp	z,JP311
+	ld	(iy+010h),1
+	ld	(iy+11h),0
+	ld	(iy+12h),0
+	ld	(iy+13h),4
+	ld	(iy+14h),0
+	ld	(iy+15h),010h
+	ld	(iy+16h),2
+	ld	(iy+17h),0
+	ld	(iy+18h),0
+	ld	(iy+19h),80h
+JP311	ld	a,3
+	ld	a,a	
+	ld	(14bh),a
+	out	(0cbh),a	;send the sector number to the HD
+				;controller to access on the next read
+				;/write.
+	jp	JP116	
+;
+JP135	push	iy
+	pop	hl	
+	ld	de,52h
+	add	hl,de	
+	push	hl	
+	ld	bc,68c8h
+	inir			;get 104 bytes from the hard drive
+	pop	hl	
+	call	RTIN104
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ld	hl,622eh
+	or	a
+	sbc	hl,de
+	jr	z,JP136
+	ld	(iy+58h),0
+	ld	(iy+59h),0
+	ld	(iy+56h),0
+	ld	(iy+57h),0
+;
+JP136	ld	h,(iy+56h)
+	ld	l,(iy+57h)
+	ld	d,(iy+12h)
+	ld	e,(iy+13h)
+	call	RTIN115
+	ld	a,h
+	or	l
+	sub	1
+	ccf
+	ld	h,(iy+010h)
+	ld	l,(iy+11h)
+	sbc	hl,bc
+	ld	(iy+2),l
+	ld	(iy+3),h
+	ld	(ix+0dh),l
+	ld	(ix+0ch),h
+	ld	h,(iy+16h)
+	ld	l,(iy+17h)
+	ld	(ix+0fh),l
+	ld	(ix+0eh),h
+	ld	(iy+4),l
+	ld	(iy+5),h
+	ld	h,(iy+14h)
+	ld	l,(iy+15h)
+	ld	(ix+010h),h
+	ld	(ix+11h),l
+	ld	(iy+6),l
+	ld	(iy+7),h
+	ld	l,(iy+13h)
+	ld	(ix+12h),l
+	ld	(iy+8),l
+	ld	h,(iy+18h)
+	ld	l,(iy+19h)
+	srl	h
+	rr	l
+	srl	h
+	rr	l
+	ld	a,l
+	ld	a,a	
+	ld	(149h),a
+	out	(0c9h),a	;set the write pre-comp cylinder in the
+				;HD controller
+	dec	(iy+0)
+	jp	RTIN103	
+;==============================================================================
+;
+RTIN104	ld	a,0eh
+	ld	(141h),a
+	out	(0c1h),a	;HD Control register 0000 1110, enable
+				;interrupts, enable controller
+	in	a,(0cfh)	;get the controller status
+	and	2
+	ret	z
+;
+	ld	a,010h
+	out	(0c1h),a	;HD Control register 0001 0000, disable
+				;DMA, interrupts, controller, and reset
+				;controller
+	call	RTIN107
+	ld	a,(14eh)
+	out	(0ceh),a	;load the SDH register with the sector
+				;size, head number and drive number
+	ld	a,0eh
+	out	(0c1h),a	;HD Control register 0000 1110, enable
+				;interrupts, enable controller
+	ld	a,(348h)
+	ld	(149h),a
+	out	(0c9h),a	;load the write pre-comp cylinder into
+				;the controller
+	ret		
+;==============================================================================
+;
+RTIN39	ld	a,(B5)
+	or	a
+	ret	z
+;
+	xor	a
+	ld	(B5),a
+	ld	de,(191h)
+	ld	hl,2
+	add	hl,de	
+	ld	a,(hl)
+	and	7fh
+	cp	5ah
+	ret	nz
+;
+	ld	(B27),a
+	ld	a,(hl)
+	and	80h
+	jr	z,JP140
+	ld	iy,349h
+	ld	de,0bah
+	ld	b,4	
+	ld	c,0	
+;
+JP137	ld	a,(iy+0)
+	or	a
+	jr	z,JP139
+	ld	a,0eh
+	out	(0c1h),a	;HD Control register, 0000 1110, enable
+				;interrupts, enable controller
+	ld	a,c
+	rlca		
+	rlca		
+	rlca		
+	or	20h
+	ld	a,a	
+	ld	(14eh),a
+	out	(0ceh),a	;send the HD controller SDH register
+				;the head number, drive number, and
+				;sector size.
+	call	RTIN104
+	ld	a,(iy+2)
+	out	(0cch),a	;send the HD controller the cylinder
+				;LSB
+	ld	a,(iy+3)
+	out	(0cdh),a	;send the HD controller the cylinder
+				;MSB
+	ld	a,70h
+	ld	(14fh),a
+	out	(0cfh),a	;HD Command 0111 0000, seek using 35 ms
+;
+JP138	in	a,(0cfh)	;get the HD controller status
+	and	11h
+	jr	z,JP138		;loop until the seek is complete
+;
+JP139	inc	c	
+	add	iy,de
+	djnz	JP137
+;
+JP140	call	RTIN64
+	defm	'**  '
+	nop		 
+	call	RTIN74
+	defm	'How could you Dave ?? '
+	nop		 
+	call	RTIN64
+	defm	'  **'
+	defb	0dh
+	defb	0ah
+	nop
+	ret		
+;==============================================================================
+;
+B27	defb	00h
+;
+RTIN105	push	iy
+	pop	hl	
+	ld	de,5ah
+	add	hl,de	
+	ld	b,(iy+59h)
+	ld	a,(341h)
+	ld	c,a
+	ld	de,(33fh)
+;
+JP141	ld	a,b
+	or	a
+	jr	z,JP144
+	ld	a,(hl)
+	inc	hl
+	sub	d
+	ld	a,(hl)
+	inc	hl
+	inc	hl
+	jr	nz,JP142		 
+	sub	e
+	jr	nz,JP142		 
+	ld	a,c
+	cp	(hl)
+	jr	z,JP143
+;
+JP142	inc	hl
+	dec	b	
+	jr	JP141	
+;
+JP143	ld	a,(iy+59h)
+	sub	b
+	ld	l,a
+	ld	h,0
+	ld	d,(iy+12h)
+	ld	e,(iy+13h)
+	call	RTIN115
+	ld	a,l
+	ld	l,(iy+2)
+	ld	h,(iy+3)
+	add	hl,bc	
+	ex	de,hl	
+	ld	c,a
+;
+JP144	in	a,(0ceh)	;get the information from the HD about
+				;head number, drive number, and sector
+				;size
+	and	0f8h		;we don't care about the head number
+	or	c
+	ld	a,a	
+	ld	(14eh),a
+	out	(0ceh),a	;send the SDH back to the HD
+	ld	a,e
+	ld	a,a	
+	ld	(14ch),a
+	out	(0cch),a	;send the LSB of the cylinder (HD)
+	ld	a,d
+	ld	a,a	
+	ld	(14dh),a
+	out	(0cdh),a	;send the MSB of the cylinder (HD)
+	ret		
+;==============================================================================
+;
+RTIN110	ld	a,(341h)
+	ld	hl,(33fh)
+	or	l
+	or	h
+	ld	a,(33dh)
+	jr	z,JP312
+	ld	c,(iy+6)
+	add	a,a
+	cp	c
+	jr	c,JP312
+	sub	c
+	bit	0,c
+	jr	nz,JP312		 
+	inc	a
+JP312	inc	a
+	ld	a,a	
+	ld	(14bh),a
+	out	(0cbh),a	;send the sector number to the HD
+	ret		
+;==============================================================================
+;
+RTIN28	ld	hl,TABL9
+	call	JP27
+	ld	hl,TABL10
+	call	JP27
+	ld	hl,TABL11
+	call	JP27
+	ld	a,47h
+	out	(0f1h),a	;0100 0111, CTC channel 1, disable
+				;interrupts, counter mode, value of 16
+				;falling edge, automatic trigger when
+				;time constant is loaded, time constant
+				;follows, reset, control word
+	ld	a,0ffh
+	out	(0f1h),a	;CTC Channel 1 time constant
+	ld	b,0fh	
+JP313	djnz	JP313
+	in	a,(0f1h)	;get the CTC status
+	cp	0fch
+	sbc	a,a
+	ld	(2e4h),a
+	jr	nz,JP145		 
+	ld	a,0c7h
+	out	(0f1h),a	;1100 0111, CTC Channel 1, enable
+				;interrupts, counter mode, value of 16
+				;falling edge, automatic trigger when
+				;time constant is loaded, time constant
+				;follows, reset, control word
+	ld	a,1
+	out	(0f1h),a	;CTC Channel 1 time constant
+;
+JP145	in	a,(0fch)	;read keyboard data, clear keyboard int.
+	call	RTIN31
+	ld	ix,TABL14
+	ld	de,(191h)
+	ld	bc,4
+	ld	a,0ah
+;
+JP146	ld	l,(ix+2)
+	ld	h,(ix+3)
+	add	hl,de	
+	ld	(ix+2),l
+	ld	(ix+3),h
+	add	ix,bc
+	dec	a
+	jr	nz,JP146		 
+;
+	ld	ix,0b4h
+	add	ix,de
+	ld	(19dh),ix
+	xor	a
+	ld	(ix+0),a
+	ld	(ix+1),a
+	ld	(ix+2),a
+	ld	(2e2h),a
+	ld	(2e3h),a
+	inc	a
+	ld	(2e1h),a
+	ld	de,50h
+	ld	hl,(191h)
+	add	hl,de	
+	ex	de,hl	
+	ld	a,0ah
+;
+JP314	ld	bc,0ah
+	ld	hl,TABL30
+	ldir
+	dec	a
+	jr	nz,JP314		 
+	ld	hl,(B33)
+	ld	de,9
+	add	hl,de	
+	ld	(hl),7
+	ret		
+;==============================================================================
+;
+TABL30	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	10h
+	defb	00h
+	defb	0dh	
+	defb	00h
+	defb	00h
+	defb	00h
+;------------------------------------------------------------------------------
+;
+TABL9 	defb	0f0h	;z80 CTC Channel 0
+	defb	20h	;0010 0000, Disable interrupt, Select timer mode, value of 256,
+			;           Falling edge, automatic trigger when time constant
+			;	    is loaded, no time constant follows, continue
+			;	    operation, vector
+	defb	0f3h	;CTC Channel 3
+	defb	0c7h	;1100 0111, Enable interrupt, Counter Mode, value of 16, Select
+			;	    falling edge, automatic trigger when time constant
+			;	    is loaded, time constant follows, software reset,
+			;	    control word
+	defb	0f3h	;CTC Channel 3	
+	defb	01h	;0000 0001, Time constant
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	00h      	;0000 0000, Normal (Command)
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	40h	;0100 0000, 1 stop bit, no parity, 5 bit word, sync (Mode)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	40h	;0100 0000, 1 stop bit, no parity, 5 bit word, sync (Mode)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	00h	;0000 0000, Normal (Command)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	40h	;0100 0000, 1 stop bit, no parity, 5 bit word, sync (Mode)
+	defb	69h	;port????
+	defb	00h
+	defb	69h	;port????
+	defb	00h
+	defb	69h	;port????
+	defb	00h
+	defb	69h	;port????
+	defb	40h
+	defb	6bh	;port????
+	defb	00h
+	defb	6bh	;port????
+	defb	00h
+	defb	6bh	;port????
+	defb	00h
+	defb	6bh	;port????
+	defb	40h
+	defb	6dh	;port????
+	defb	00h
+	defb	6dh	;port????
+	defb	00h
+	defb	6dh	;port????
+	defb	00h
+	defb	6dh	;port????
+	defb	40h
+	defb	73h	;Multi-Term Board Command Word
+	defb	36h	;0011 0110, Channel 0, Load counter value, counter output 
+			;signal continous pulse 50% duty cycle.
+	defb	70h	;Multi-Term Board Channel 0 LSB Byte, MSB Byte
+	defb	0dh	;0000 1101, Counter Value for channel 0 LSB
+	defb	70h	;Multi-Term Board Channel 0 LSB Byte, MSB Byte
+	defb	00h	;0000 0000, Counter Value for channel 0 MSB
+	defb	73h	;Multi-Term Board Command Word 
+	defb	76h	;0111 0110, Channel 1, Load counter value, counter output
+			;	    signal continous pulse 50% duty cycle.
+	defb	71h	;Multi-Term Board Channel 1 LSB Byte, MSB Byte
+	defb	0dh	;0000 1101, Counter Value for channel 1 LSB
+	defb	71h	;Multi-Term Board Channel 1 LSB Byte, MSB Byte
+	defb	00h	;0000 0000, Counter Value for channel 1 LSB
+	defb	73h	;Multi-Term Board Command Word 
+	defb	0b6h	;0111 0110, Channel 2, Load counter value, counter output
+		;	    signal continous pulse 50% duty cycle.
+	defb	72h	;Multi-Term Board Channel 2 LSB Byte, MSB Byte
+	defb	0dh	;0000 1101, Counter value for channel 2 LSB
+	defb	72h	;Multi-Term Board Channel 2 LSB Byte, MSB Byte
+	defb	00h	;0000 1101, Counter value for channel 2 LSB
+	defb	63h	;port????
+	defb	36h
+	defb	60h	;port????
+	defb	0dh	
+	defb	60h	;port????
+	defb	00h
+	defb	63h	;port????
+	defb	76h
+	defb	61h	;port????
+	defb	0dh	
+	defb	61h	;port????
+	defb	00h
+	defb	63h	;port????
+	defb	0b6h
+	defb	62h	;port????
+	defb	0dh	
+	defb	62h	;port????
+	defb	00h
+	defb	74h	;Multi-Term Board Channel 0 CTC Control/Interrupt Vector
+	defb	00h	;0000 0000, disable interrupt, timer mode, value of 16, falling 
+			;	    edge of clock, automatic trigger when time constant
+			;	    is loaded, continous operation, interrupt vector
+	defb	64h	;port????
+	defb	08h	
+	defb	74h	;Multi-Term Board Channel 0 CTC Control/Interrupt Vector
+	defb	0c5h	;1100 0101, enable interrupt, counter mode, value of 16,
+			;	    falling edge of clock, automatically trigger when
+			;	    time constant is loaded, continous operation,
+			;	    control word
+	defb	74h	;Multi-Term Board Channel 0 CTC Control/Interrupt Vector
+	defb	01h	;0000 0001, Time constant
+	defb	75h	;Multi-Term Board Channel 1 CTC Control/Interrupt Vector
+	defb	0c5h	;1100 0101, enable interrupt, counter mode, value of 16,
+			;	    falling edge of clock, automatically trigger when
+			;	    time constant is loaded, continous operation,
+			;	    control word
+	defb	75h	;Multi-Term Board Channel 1 CTC Control/Interrupt Vector
+	defb	01h	;0000 0001, Time constant
+	defb	76h	;Multi-Term Board Channel 2 CTC Control/Interrupt Vector
+	defb	0c5h	;1100 0101, enable interrupt, counter mode, value of 16,
+			;	    falling edge of clock, automatically trigger when
+			;	    time constant is loaded, continous operation,
+			;	    control word
+	defb	76h	;Multi-Term Board Channel 2 CTC Control/Interrupt Vector
+	defb	01h	;0000 0001, Time constant
+	defb	64h	;port????
+	defb	0c5h
+	defb	64h	;port????
+	defb	01h
+	defb	65h	;port????
+	defb	0c5h
+	defb	65h	;port????
+	defb	01h
+	defb	66h	;port????
+	defb	0c5h
+	defb	66h	;port????
+	defb	01h
+	defb	77h	;Not Used by Multi-Term Board
+	defb	47h
+	defb	67h	;port????
+	defb	47h
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	4eh	;0100 1110, 1 stop bit, no parity, 8 bit word, baud rate factor
+			;           16X (Mode)
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	37h	;0011 0111, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Enable transmit (Command)
+	defb	78h	;Multi-Term Board Channel 0 Receive, Transmit Character
+	defb	00h	;0000 0000, Transmit character (00)
+	defb	79h	;Multi-Term Board Channel 0 USART Mode/Command/Status
+	defb	36h	;0011 0110, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Disable transmit (Command)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	4eh	;0100 1110, 1 stop bit, no parity, 8 bit word, baud rate factor
+			;           16X (Mode)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	37h	;0011 0111, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Enable transmit (Command)
+	defb	7ah	;Multi-Term Board Channel 0 Receive, Transmit Character
+	defb	00h	;0000 0000, Transmit character (00)
+	defb	7bh	;Multi-Term Board Channel 1 USART Mode/Command/Status
+	defb	36h	;0011 0110, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Disable transmit (Command)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	4eh	;0100 1110, 1 stop bit, no parity, 8 bit word, baud rate factor
+			;           16X (Mode)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	37h	;0011 0111, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Enable transmit (Command)
+	defb	7ch	;Multi-Term Board Channel 2 Receive, Transmit Character
+	defb	00h	;0000 0000, Transmit character (00)
+	defb	7dh	;Multi-Term Board Channel 2 USART Mode/Command/Status
+	defb	36h	;0011 0110, RTS true, Reset Error, Normal, Enable receive,
+			;	    DTR True, Disable transmit (Command)
+	defb	69h	;port????
+	defb	4eh
+	defb	69h	;port????
+	defb	37h
+	defb	68h	;port????
+	defb	00h
+	defb	69h	;port????
+	defb	36h
+	defb	6bh	;port????
+	defb	4eh
+	defb	6bh	;port????
+	defb	37h
+	defb	6ah	;port????
+	defb	00h
+	defb	6bh	;port????
+	defb	36h
+	defb	6dh	;port????
+	defb	4eh
+	defb	6dh	;port????
+	defb	37h
+	defb	6ch	;port????
+	defb	00h
+	defb	6dh	;port????
+	defb	36h
+	defb	0e3h	;PIO Port B - Control
+	defb	32h	;0011 0010, Interrupt Vector Word?
+	defb	0e3h	;PIO Port B - Control
+	defb	0fh	;0000 1111, Mode 0
+	defb	0e3h	;PIO Port B - Control
+	defb	07h	;0000 0111, Interrupt Control word
+			;		No mask follows, Active level is low, interrupt
+			;		on or function, interrupt disabled.
+	defb	0e0h	;PIO Port A - Data
+	defb	00h	;0000 0000,
+	defb	0e0h	;PIO Port A - Data
+	defb	08h	;0000 1000,
+	defb	0e0h	;PIO Port A - Data
+	defb	00h	;0000 0000,
+	defb	00h
+;------------------------------------------------------------------------------
+TABL10	defb	0f6h	;SIO Channel A Command/Status
+	defb	18h	;0001 1000, Register 0, channel reset
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	04h	;0000 0100, Point to register 4
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	44h	;0100 0100, parity disable, 1 stop bit, 8 bit sync character,
+			;	    16X baud rate clock mode
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	05h	;0000 0101, Point to register 5
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	68h	;0110 1000, Tx CRC, RTS, SDLC/CRC all disabled, Transmit enable
+			;	    Transmit 8 bit characters, disable DTR
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	01h	;0000 0001, Point to register 1
+	defb	0f6h	;SIO Channel A Command/Status	
+	defb	17h	;0001 0111, Ext Interrupt enabled, Tx interrupt enabled, 
+			;	    interrupt on all receive characters
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	03h	;0000 0011, Point to register 3
+	defb	0f6h	;SIO Channel A Command/Status
+	defb	0c1h	;1100 0001, Rx enabled, rx 8 bit/character 
+	defb	00h
+	defb	00h
+;------------------------------------------------------------------------------
+TABL11	defb	0f7h	;SIO Channel B Command/Status
+	defb	18h	;0001 1000, Register 0, channel reset
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	04h	;0000 0100, Point to register 4
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	44h	;0100 0100, parity disable, 1 stop bit, 8 bit sync character,
+			;	    16X baud rate clock mode
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	05h	;0000 0101, Point to register 5
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	68h	;0110 1000, Tx CRC, RTS, SDLC/CRC all disabled, Transmit enable
+			;	    Transmit 8 bit characters, disable DTR
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	01h	;0000 0001, Point to register 1
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	17h	;0001 0111, Ext Interrupt enabled, Tx interrupt enabled, 
+			;	    interrupt on all receive characters
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	03h	;0000 0011, Point to register 3
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	0c1h	;1100 0001, Rx enabled, rx 8 bit/character 
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	02h	;0000 0010, Point to register 2
+	defb	0f7h	;SIO Channel B Command/Status
+	defb	10h	;0001 0000, Interrupt Vector
+	defb	00h
+	defb	00h
+;------------------------------------------------------------------------------
+;
+;=======================================>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+RTIN92	push	af		;save the world
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	push	iy
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN31
+	ld	a,02h
+	out	(0f7h),a	;SIO Channel B 0000 0010 - point to 
+				;register 2
+	in	a,(0f7h)	;Read register 2, clears the interrupt
+	ld	ix,(B35)
+	ld	iy,TABL17
+	bit	3,a		
+	jr	z,JP147		;if bit 3 is 0 then jump
+	ld	ix,(B34)
+	ld	iy,TABL16
+;
+JP147	ld	c,(iy+7)	;load C with f6
+	ld	b,(iy+6)	;load B with 01
+	ld	hl,JP315
+	push	hl	
+	bit	1,a
+	jr	z,JP148		;if bit 1 is set then jump
+	bit	2,a
+	jp	z,JP149		;if bit 2 is set then jump
+	jp	JP154	
+;
+JP148	bit	2,a		
+	jp	z,JP157		;if bit 2 is set then jump
+	jp	RTIN116	
+;
+JP315	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	iy
+	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ei		
+	reti
+;=======================================<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;
+RTIN116	ld	c,(iy+7)
+	in	a,(c)		;get the SIO Status A or B
+	and	1
+	ret	z
+	dec	c	
+	dec	c	
+	in	a,(c)		;get SIO Data A or B
+	call	RTIN117
+	jr	RTIN116	
+;
+JP149	ld	a,010h
+	out	(c),a		;0001 0000 - SIO Port A or B register 0
+	ld	e,0	
+	in	a,(c)		;get the status from the SIO A or B
+	bit	5,a		;check for CTS
+	jr	z,JP150		;if not then jump
+	set	1,e		;else set bit 1 in E
+;
+JP150	bit	3,a		;check for DCD (Carrier)
+	jr	z,JP151		;jump if its not there
+	set	0,e		;else set bit 0 in E
+;
+JP151	bit	4,a		;check for sync/hunt
+	jr	z,JP152		;jump if its not there
+	set	2,e		;else set bit 2 in E
+;
+JP152	bit	7,a		;check for break/abort
+	jr	z,JP153		;jump if its not there
+	set	5,b		;else set bit 5 in E
+	dec	c	
+	dec	c	
+	in	a,(c)		;get some data from the SIO A or B
+	call	RTIN117
+;
+JP153	ld	a,e
+	cp	(ix+9)		;either 6ea9, 6ead
+	ld	(ix+9),a
+	ret	z
+	bit	2,(ix+8)	
+	ret	z
+	set	7,b
+	call	RTIN117
+	ret		
+;
+JP154	in	a,(c)		;read the status of SIO Channel A
+	bit	0,a
+	ret	z		;if bit 0 is a 0 then return
+	push	bc	
+	ld	a,1
+	out	(c),a		;SIO Channel A - Register 1
+	in	a,(c)		;SIO Channel A - read register 1
+	and	30h
+	jr	z,JP156		;if no parity or overrun error ocurred
+				;then jump
+	bit	4,a		;see if it was a parity error
+	jr	z,JP155		;if not then jump
+	set	4,b
+;
+JP155	bit	5,a		;check for a overrun error
+	jr	z,JP156		;if not then jump 
+	set	6,b
+;
+JP156	dec	c	
+	dec	c	
+	in	a,(c)		;get a byte from Channel A SIO
+	call	RTIN117
+	pop	bc	
+	ld	a,30h
+	out	(c),a		;
+	jr	JP154	
+;=======================================>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;
+JP157	ld	a,28h
+	out	(c),a		;
+	jp	JP174	
+;
+;=======================================<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;
+RTIN86	push	ix
+	push	iy
+	ld	ix,(B36)
+	ld	iy,TABL19
+	jr	JP158	
+;==============================================================================
+;
+RTIN87	push	ix
+	push	iy
+	ld	ix,(B37)
+	ld	iy,TABL20
+	jr	JP158	
+;==============================================================================
+;
+RTIN88	push	ix
+	push	iy
+	ld	ix,(B38)
+	ld	iy,TABL21
+	jr	JP158	
+;==============================================================================
+;
+RTIN89	push	ix
+	push	iy
+	ld	ix,(B39)
+	ld	iy,TABL22
+	jr	JP158	
+;==============================================================================
+;
+RTIN90	push	ix
+	push	iy
+	ld	ix,(B40)
+	ld	iy,TABL23
+	jr	JP158	
+;==============================================================================
+;
+RTIN91	push	ix
+	push	iy
+	ld	ix,(B41)
+	ld	iy,TABL24
+	jr	JP158	
+;==============================================================================
+;
+JP158	push	af	
+	push	bc	
+	push	de	
+	push	hl	
+	call	JP163
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN31
+;
+JP159	ld	c,(iy+7)
+	in	d,(c)
+	ld	a,(iy+5)
+	or	a
+	ld	a,02h
+	jr	z,JP160
+	ld	a,3
+;
+JP160	and	d
+	jr	z,JP162
+	ld	hl,RTIN118
+	ld	a,02h
+	and	d
+	jr	nz,JP161		 
+	ld	hl,RTIN120
+;
+JP161	call	RTIN43
+	jp	JP159	
+;
+JP162	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	pop	iy
+	pop	ix
+	ei		
+	ret		
+;
+JP163	reti
+;==============================================================================
+;
+RTIN118	ld	e,0	
+	ld	b,(iy+6)
+	dec	c	
+	in	e,(c)
+	inc	c	
+	ld	a,38h
+	and	d
+	jr	z,JP167
+	xor	a
+	bit	5,d
+	jr	z,JP164
+	or	20h
+;
+JP164	bit	3,d
+	jr	z,JP165
+	or	010h
+;
+JP165	bit	4,d
+	jr	z,JP166
+	or	40h
+;
+JP166	or	b
+	ld	b,a
+	call	RTIN119
+;
+JP167	ld	a,e
+	call	RTIN117
+	ret		
+;==============================================================================
+;
+RTIN119	push	bc	
+	ld	b,0	
+	ld	hl,80h
+	add	hl,bc	
+	ld	a,(hl)
+	or	010h
+	out	(c),a
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN120	call	RTIN124
+	ret	z
+;
+	ld	b,a
+	ld	a,(iy+5)
+	or	a
+	jr	z,JP168
+	dec	c	
+	out	(c),b
+	inc	c	
+	ret		
+;
+JP168	ld	a,b
+	ld	b,0	
+	ld	hl,80h
+	add	hl,bc	
+	dec	c	
+	out	(c),a
+	ld	b,(hl)
+	res	0,b
+	ld	(hl),b
+	inc	c	
+	out	(c),b
+	ret		
+;==============================================================================
+;
+RTIN121	ld	e,a
+	bit	7,a
+	jr	z,JP169
+	sub	0a1h
+	cp	6
+	ld	hl,TABL31
+	jr	c,JP170
+	sub	1eh
+	cp	2
+	ld	hl,B48
+	jr	c,JP170
+	jr	JP171	
+;
+JP169	or	a
+	jr	z,JP172
+	sub	1ch
+	cp	4
+	jr	nc,JP171
+	push	af	
+	ld	a,1bh
+	call	RTIN117
+	pop	af	
+	ld	hl,B49
+;
+JP170	ld	e,a
+	ld	d,0	
+	add	hl,de	
+	ld	e,(hl)
+;
+JP171	xor	a
+	ld	(TABL12),a
+	ld	a,e
+	ret		
+;
+JP172	ld	a,(TABL12)
+	cpl
+	ld	(TABL12),a
+	or	a
+	ld	a,11h
+	ret	z
+	ld	a,13h
+	ret		
+;------------------------------------------------------------------------------
+TABL12	defb	00h
+B49	defb	44h
+	defb	43h
+	defb	41h
+	defb	42h
+TABL31	defb	7ch
+	defb	60h
+	defb	1dh
+	defb	1eh
+	defb	1fh
+	defb	1ch
+B48	defb	5ch
+	defb	00h
+;==============================================================================
+;
+RTIN93	push	af		;save the world
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	push	iy
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN31
+	in	a,(0ffh)	;read the NMI and NMI mask register
+	and	80h		;see if there is a keyboard interrupt
+	jr	z,JP173		;if not then jump
+	in	a,(0fch)	;read keyboard data and clear keyboard
+				;interrupt
+	ld	ix,(B33)
+	ld	b,0	
+	call	RTIN121
+	call	RTIN117
+;
+JP173	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	iy
+	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ei		
+	reti
+;==============================================================================
+;
+RTIN95	push	af		;save the world
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	push	iy
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN31
+	ld	a,3
+	out	(0e3h),a	;PIO Port B 0000 0011
+	ld	ix,(B32)
+	ld	iy,TABL18
+	call	RTIN122
+	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	iy
+	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ei		
+	reti
+;==============================================================================
+;
+RTIN122	in	a,(0e0h)	;Printer and FDC Int. Status
+	and	0e0h
+	ret	nz
+;
+	call	RTIN124
+	ret	z
+;
+	push	af	
+	ld	a,83h
+	out	(0e3h),a	;PIO Port B 1000 0011 - enable int.
+	pop	af	
+	out	(0e1h),a	;send data to the printer
+	ret		
+;=============================================================================
+;
+JP174	ld	c,(iy+7)
+	ld	b,(iy+6)
+	in	a,(c)
+	and	4
+	ret	z
+;
+	call	RTIN124
+	ret	z
+;
+	dec	c	
+	dec	c	
+	out	(c),a
+	ret		
+;==============================================================================
+;
+RTIN123	ld	c,(iy+7)
+	ld	b,0	
+	ld	hl,80h
+	add	hl,bc	
+	ld	a,(hl)
+	set	0,a
+	ld	(hl),a
+	out	(c),a
+	ret		
+;==============================================================================
+;
+RTIN117	bit	0,(ix+7)	
+	ret	nz
+;
+	push	bc	
+	push	de	
+	push	hl	
+	push	ix
+	ld	ix,(19dh)
+	ld	c,a
+	ld	a,(ix+0)
+	sub	(ix+1)
+	cp	0ffh
+	jr	z,JP179
+	cp	63h
+	jr	z,JP179
+	ld	a,(2e2h)
+	or	b
+	ld	b,a
+	ld	a,0
+	ld	(2e2h),a
+	ld	a,(2e3h)
+	inc	a
+	jr	z,JP175
+	ld	(2e3h),a
+;
+JP175	ld	h,0
+	ld	l,(ix+0)
+	add	hl,hl
+	ld	de,4
+	add	hl,de	
+	push	ix
+	pop	de	
+	add	hl,de	
+	ld	(hl),b
+	inc	hl
+	ld	(hl),c
+	ld	a,(ix+0)
+	inc	a
+	cp	64h
+	jr	nz,JP176		 
+	ld	a,0
+;
+JP176	ld	(ix+0),a
+	sub	(ix+1)
+	jr	c,JP177
+	add	a,64h
+;
+JP177	ld	hl,2e1h
+	cp	(hl)
+	jr	nc,JP178
+	ld	a,c
+	and	7fh
+	cp	13h
+	jr	nz,JP180		 
+;
+JP178	bit	4,(ix+2)	
+	jr	nz,JP180		 
+	bit	2,(ix+2)	
+	jr	z,JP180
+	set	4,(ix+2)	
+	call	RTIN133
+	jr	JP180	
+;
+JP179	ld	a,40h
+	ld	(2e2h),a
+;
+JP180	pop	ix
+	pop	hl	
+	pop	de	
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN124	bit	0,(ix+4)	
+	ret	z
+;
+	bit	0,(iy+0)	
+	ret	z
+;
+	bit	1,(ix+7)	
+	jr	z,JP181
+	ld	a,(iy+5)
+	or	a
+	jr	z,JP181
+	dec	a
+	sub	(ix+5)
+	neg
+	ld	(ix+5),a
+	ld	(iy+5),1
+;
+JP181	ld	a,(iy+5)
+	or	a
+	jr	z,JP182
+	ld	l,(iy+0eh)
+	ld	h,(iy+0fh)
+	ld	a,(hl)
+	inc	hl
+	ld	(iy+0eh),l
+	ld	(iy+0fh),h
+	dec	(iy+5)
+	ret	nz
+;
+	ld	l,0
+	inc	l
+;
+JP182	push	af	
+	set	4,(ix+4)	
+	res	0,(ix+4)	
+	ld	(iy+0),0
+	bit	2,(ix+4)	
+	call	nz,RTIN133
+	pop	af	
+	ret		
+;==============================================================================
+;
+RTIN125	call	RTIN31
+	ld	ix,(19dh)
+	ld	a,(2e3h)
+	cp	32h
+	ld	b,20h	
+	jr	nc,JP316
+	cp	010h
+	ld	b,010h	
+	jr	nc,JP316
+	ld	b,1	
+JP316	ld	a,b
+	ld	(2e1h),a
+	xor	a
+	ld	(2e3h),a
+	bit	4,(ix+2)	
+	jr	nz,JP317		 
+	set	4,(ix+2)	
+	bit	2,(ix+2)	
+	call	nz,RTIN133
+JP317	ret		
+;==============================================================================
+;
+RTIN35	call	RTIN31
+	ld	ix,TABL14
+	ld	b,0ah	
+;
+JP183	ld	e,(ix+0)
+	ld	d,(ix+1)
+	push	de	
+	pop	iy
+	ld	e,(ix+2)
+	ld	d,(ix+3)
+	push	de	
+	ex	(sp),ix
+	ld	l,(iy+14h)
+	ld	h,(iy+15h)
+	call	RTIN43
+	call	RTIN126
+	pop	ix
+	ld	de,4
+	add	ix,de
+	djnz	JP183
+	ret		
+;==============================================================================
+;
+RTIN126	push	bc	
+	push	de	
+	push	hl	
+	ld	l,(iy+8)
+	ld	h,(iy+9)
+	ld	a,(hl)
+	or	a
+	jp	z,JP188
+	ld	a,(iy+0)
+	or	a
+	jp	nz,JP185
+	bit	0,(ix+4)	
+	jp	z,JP186
+	di		
+	dec	(iy+0)
+	dec	(hl)
+	ld	a,(ix+5)
+	cp	20h
+	jr	c,JP184
+	ld	a,1fh
+;
+JP184	ld	(iy+5),a
+	ld	l,(iy+010h)
+	ld	(iy+0eh),l
+	ld	h,(iy+11h)
+	ld	(iy+0fh),h
+	ld	c,a
+	ld	b,0	
+	call	RTIN100
+	ld	l,(iy+12h)
+	ld	h,(iy+13h)
+	call	RTIN43
+	ei		
+	jr	JP188	
+;
+JP185	nop
+	call	RTIN64
+	defm	'<<  *** DIAG:SBSY'
+       	nop
+	jr	JP187	
+;
+JP186	dec	(hl)
+	call	RTIN64
+	defm	'<<  *** DIAG:SNGO'
+	nop
+;
+JP187	ld	a,(iy+6)
+	call	RTIN65
+	call	RTIN64
+	defm	' *** >>'
+	nop
+;
+JP188	pop	hl	
+	pop	de	
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN127	push	bc	
+	push	de	
+	push	hl	
+	ld	l,(iy+0ch)
+	ld	h,(iy+0dh)
+	ld	a,(hl)
+	or	a
+	jp	z,JP189
+	ld	a,(iy+0)
+	or	a
+	jp	nz,JP189
+	dec	(hl)
+	ld	e,(ix+7)
+	ld	d,(ix+8)
+	ld	l,(ix+6)
+	ld	a,(iy+1)
+	cp	e
+	jr	nz,JP190		 
+	ld	a,(iy+2)
+	cp	d
+	jr	nz,JP190		 
+	ld	a,(iy+4)
+	cp	l
+	jp	z,JP206
+;
+JP190	ld	(iy+1),e
+	ld	(iy+2),d
+	ld	a,0c1h
+	ld	h,68h
+	bit	5,e
+	jr	z,JP192
+	ld	a,41h
+	ld	h,28h
+;
+JP192	ld	b,a
+	ld	a,h
+	bit	0,d
+	jr	z,JP193
+	or	2
+;
+JP193	bit	1,d
+	jr	z,JP194
+	or	80h
+;
+JP194	bit	4,e
+	jr	z,JP195
+	or	010h
+;
+JP195	ld	h,a
+	ld	a,l
+	push	hl	
+	push	bc	
+	cp	010h
+	jr	nc,JP196
+	call	RTIN128
+	jr	nz,JP197		 
+;
+JP196	ld	a,(iy+4)
+	ld	(ix+6),a
+	call	RTIN128
+	jr	nz,JP197		 
+	ld	a,0dh
+	ld	(ix+6),a
+	call	RTIN128
+;
+JP197	ld	(B30),a
+	inc	hl
+	ld	a,(hl)
+	pop	bc	
+	pop	hl	
+	bit	5,e
+	jr	z,JP198
+	or	1
+;
+JP198	bit	6,e
+	jr	nz,JP199		 
+	or	2
+;
+JP199	or	4
+	bit	7,e
+	jr	z,JP200
+	or	0ch
+;
+JP200	ld	e,a
+	ld	d,b
+	di		
+	ld	c,(iy+7)
+	ld	a,4
+	out	(c),a
+	out	(c),e
+	ld	a,5
+	out	(c),a
+	out	(c),h
+	ld	a,3
+	out	(c),a
+	out	(c),d
+	ld	a,l
+	cp	(iy+4)
+	jr	z,JP201
+	ld	a,(B30)
+	ld	b,a
+	ld	a,(iy+6)
+	cp	2
+	jr	z,JP202
+	ld	c,0f0h	
+	call	RTIN129
+	ld	c,0f1h	
+	ld	a,(2e4h)
+	or	a
+	call	nz,RTIN129
+	jr	JP201	
+;
+JP202	ld	c,0f2h	
+	call	RTIN129
+;
+JP201	ei		
+;
+JP189	ld	c,(iy+7)
+	ld	a,(iy+3)
+	and	0f8h
+	in	e,(c)
+	bit	5,e
+	jr	z,JP203
+	or	2
+;
+JP203	bit	3,e
+	jr	z,JP204
+	or	1
+;
+JP204	bit	4,e
+	jr	z,JP205
+	or	4
+;
+JP205	di		
+	cp	(iy+3)
+	jr	z,JP206
+	ld	(ix+9),a
+	ld	(iy+3),a
+	bit	2,(ix+8)	
+	jr	z,JP206
+	ld	b,(iy+6)
+	set	7,b
+	xor	a
+	call	RTIN117
+;
+JP206	ei		
+	pop	hl	
+	pop	de	
+	pop	bc	
+	ret		
+;==============================================================================
+B30	defb	00h
+;
+RTIN129	ld	a,47h
+	out	(c),a
+	out	(c),b
+	ret		
+;==============================================================================
+;
+RTIN128	push	bc	
+	add	a,a
+	ld	c,a
+	ld	b,0	
+	ld	hl,TABL13
+	add	hl,bc	
+	ld	a,(hl)
+	or	a
+	pop	bc	
+	ret		
+;==============================================================================
+TABL13	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	0d0h
+	defb	80h
+	defb	0d0h
+	defb	40h
+	defb	68h
+	defb	40h
+	defb	45h
+	defb	40h
+	defb	34h
+	defb	40h
+	defb	1ah
+	defb	40h
+	defb	0dh
+	defb	40h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+;==============================================================================
+;
+RTIN130	push	bc
+	push	de	
+	push	hl	
+	ld	l,(iy+0ch)
+	ld	h,(iy+0dh)
+	ld	a,(hl)
+	or	a
+	jp	z,JP207
+	ld	a,(iy+0)
+	or	a
+	jp	nz,JP207
+	dec	(hl)
+	ld	b,(ix+6)
+	ld	c,(ix+8)
+	ld	e,(ix+7)
+	ld	a,(iy+4)
+	cp	b
+	jr	nz,JP208		 
+	ld	a,(iy+2)
+	cp	c
+	jr	nz,JP208		 
+	ld	a,(iy+1)
+	cp	e
+	jp	z,JP207
+;
+JP208	ld	a,0eh
+	bit	5,e
+	jr	z,JP209
+	ld	a,1ah
+	bit	6,e
+	jr	nz,JP209		 
+	or	20h
+;
+JP209	or	40h
+	bit	7,e
+	jr	z,JP210
+	or	0c0h
+;
+JP210	ld	l,a
+	ld	a,15h
+	bit	4,e
+	jr	z,JP211
+	or	8
+;
+JP211	bit	0,c
+	jr	z,JP212
+	or	20h
+;
+JP212	bit	1,c
+	jr	z,JP213
+	or	2
+;
+JP213	ld	h,a
+	ld	(iy+2),c
+	ld	(iy+1),e
+	ex	de,hl	
+	ld	c,(iy+7)
+	di		
+	ld	a,40h
+	out	(c),a
+	nop
+	nop
+	out	(c),e
+	nop
+	nop
+	out	(c),d
+	res	0,d
+	dec	c	
+	xor	a
+	out	(c),a
+	inc	c	
+	out	(c),d
+	ld	a,d
+	ld	e,c
+	ld	d,0	
+	ld	hl,80h
+	add	hl,de	
+	ld	(hl),a
+	ld	a,b
+	cp	(iy+4)
+	ld	(iy+4),a
+	call	nz,RTIN132
+	ei		
+;
+JP207	ld	c,(iy+7)
+	in	e,(c)
+	ld	a,(iy+3)
+	and	0f8h
+	or	3
+	bit	7,e
+	jr	z,JP214
+	or	4
+;
+JP214	cp	(iy+3)
+	jr	z,JP215
+	ld	(ix+9),a
+	ld	(iy+3),a
+	bit	2,(ix+8)	
+	jr	z,JP215
+	di		
+	ld	b,(iy+6)
+	set	7,b
+	xor	a
+	call	RTIN117
+	ei		
+;
+JP215	pop	hl	
+	pop	de	
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN132	ld	c,(iy+6)
+	ld	a,(iy+4)
+	cp	11h
+	ret	nc
+	add	a,a
+	ld	e,a
+	ld	d,0	
+	ld	hl,TABL25
+	add	hl,de	
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	ld	a,d
+	or	e
+	ret	z
+	ld	a,c
+	cp	0ah
+	ret	nc
+	sub	4
+	ld	c,a
+	add	a,a
+	add	a,c
+	ld	c,a
+	ld	b,0	
+	ld	hl,TABL26
+	add	hl,bc	
+	ld	c,(hl)
+	inc	hl
+	ld	a,(hl)
+	out	(c),a
+	inc	hl
+	ld	c,(hl)
+	out	(c),e
+	out	(c),d
+	ret		
+;==============================================================================
+TABL25	defb	00h
+	defb	00h
+	defb	0c4h
+	defb	09h
+	defb	83h
+	defb	06h
+	defb	70h
+	defb	04h
+	defb	00h
+	defb	00h
+	defb	41h
+	defb	03h
+	defb	00h
+	defb	00h
+	defb	0a1h
+	defb	01h
+	defb	0d0h
+	defb	00h
+	defb	68h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	34h
+	defb	00h
+	defb	1ah
+	defb	00h
+	defb	0dh
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+;==============================================================================
+TABL26	defb	73h	;port
+	defb	36h
+	defb	70h
+	defb	73h	;port
+	defb	76h
+	defb	71h
+	defb	73h	;port
+	defb	0b6h
+	defb	72h
+	defb	63h	;port
+	defb	36h
+	defb	60h
+	defb	63h	;port
+	defb	76h
+	defb	61h
+	defb	63h	;port
+	defb	0b6h
+	defb	62h
+;==============================================================================
+;
+RTIN135	ld	a,(B31)
+	or	a
+	ret	z
+	call	RTIN124
+	call	nz,RTIN67
+	ret		
+;==============================================================================
+;
+RTIN36	ld	iy,TABL18
+	ld	a,(iy+0)
+	or	a
+	ret	z
+;
+	call	RTIN31
+	ld	ix,(B32)
+	di		
+	call	RTIN122
+	ei		
+	ret		
+;==============================================================================
+;
+RTIN133	ld	ix,(191h)
+	ld	de,4
+	add	ix,de
+	inc	(ix+0)
+;==============================================================================
+;
+RTIN134	ld	a,(15eh)
+	or	40h
+	out	(0deh),a
+	and	0bfh
+	out	(0deh),a
+	ret		
+;==============================================================================
+;
+TABL15	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+B31	defb	00h
+	defb	00h
+	defb	00h
+	defb	0f6h
+	defb	52h
+	defb	00h
+	defb	53h
+	defb	0ah
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	0c1h
+	defb	02h
+	defw	RTIN135	;a routine in the body of the program
+	defw	RTIN136	;this is a ret to somewhere
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table as referenced by 06690 iy.
+TABL16	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	01h
+	defb	0f6h	;SIO A Channel A status/command port
+	defb	0f7h	;SIO B Channel B Status/command port
+	defb	52h
+	defb	01h
+	defb	53h
+	defb	0bh
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	0a1h
+	defb	01h
+	defw	JP174	;a routine
+	defw	RTIN127	;routine in the body of the program
+	defb	00h
+
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 06684 iy.
+TABL17	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	02h
+	defb	0f7h
+	defb	0f8h
+	defb	52h
+	defb	02h
+	defb	53h
+	defb	0ch
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	0c1h
+	defb	01h
+	defw	JP174	;a routine in the program
+	defw	RTIN127	;a routine in the program
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 068f2,iy 06d86,iy.
+TABL18	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	03h
+	defb	00h
+	defb	0f9h
+	defb	52h
+	defb	03h
+	defb	53h
+	defb	0dh
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	0a1h
+	defb	02h
+	defw	RTIN122	;a routine in the program
+	defw	RTIN136	;this goes to a ret instruction
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 0674e iy.
+TABL19	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	04h
+	defb	79h
+	defb	0fah
+	defb	52h
+	defb	04h
+	defb	53h
+	defb	0eh
+	defb	53h	
+	defb	00h
+	defb	00h
+	defb	0e1h
+	defb	01h
+	defw	RTIN123	;a routine in the program
+	defw	RTIN130	;a routine in the program
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 0675c iy.
+TABL20	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	05h
+	defb	7bh
+	defb	0fbh
+	defb	52h
+	defb	05h
+	defb	53h
+	defb	0fh
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	01h
+	defb	02h
+	defw	RTIN123	;a routine in the program
+	defw	RTIN130	;a routine in the program
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 0676a iy.
+TABL21	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	06h
+	defb	7dh
+	defb	0fch
+	defb	52h
+	defb	06h
+	defb	53h
+	defb	10h
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	21h
+	defb	02h
+	defw	RTIN123	;a routine in the program
+	defw	RTIN130	;a routine in the program
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 06778 iy.
+TABL22	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	07h
+	defb	69h
+	defb	0fdh
+	defb	52h
+	defb	07h
+	defb	53h
+	defb	11h
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	41h
+	defb	02h
+	defw	RTIN123	;a routine in the program
+	defw	RTIN130	;a routine in the program
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 06786 iy.
+TABL23	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	08h
+	defb	6bh
+	defb	0feh
+	defb	52h
+	defb	08h
+	defb	53h
+	defb	12h
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	61h
+	defb	02h
+	defw	RTIN123	;a routine
+	defw	RTIN130	;a routine
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 06794 iy.
+TABL24	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	09h
+	defb	6dh
+	defb	0ffh
+	defb	52h
+	defb	09h
+	defb	53h
+	defb	13h
+	defb	53h
+	defb	00h
+	defb	00h
+	defb	81h
+	defb	02h
+	defw	RTIN123	;a routine
+	defw	RTIN130	;a routine
+	defb	00h
+;
+;------------------------------------------------------------------------------
+;Maybe the top of an index table referenced by 0651d,iy 06a52,ix
+TABL14	defw	TABL15
+B33	defb	50h	;this is loaded into ix at 54th(6efb), 068b2, 06efb + the next	
+	defb	00h	;byte
+;
+	defw	TABL16
+B34	defb	5ah	;this is loaded into ix at 0668c + the next byte
+	defb	00h
+;
+	defw	TABL17
+B35	defb	64h	;this is loaded into ix at 06680 + the next byte
+	defb	00h
+;
+	defw	TABL18
+B32	defb	6eh	;this is loaded into ix at 06d92 + the next byte
+	defb	00h
+;
+	defw	TABL19
+B36	defb	78h	;this is loaded into ix at 0674a + the next byte
+	defb	00h	
+;
+	defw	TABL20
+B37	defb	82h	;this is loaded into ix at 06758 + the next byte
+	defb	00h
+;
+	defw	TABL21
+B38	defb	8ch	;this is loaded into ix at 06766 + the next byte
+	defb	00h
+;
+	defw	TABL22
+B39	defb	96h	;this is loaded into ix at 06774 + the next byte
+	defb	00h
+;
+	defw	TABL23
+B40	defb	0a0h	;this is loaded into ix at 06782 + the next byte
+	defb	00h
+;
+	defw	TABL24
+B41	defb	0aah	;this is loaded into ix at 06790 + the next byte
+	defb	00h
+;==============================================================================
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+	defb	00h
+;==============================================================================
+;
+RTIN32	ld	a,(B31)
+	or	a
+	ret	z
+;
+	ld	a,(17c1h)
+	or	a
+	ret	nz
+;
+	dec	a
+	ld	(17c1h),a
+	call	RTIN31
+	ld	ix,(B33)
+	ld	iy,TABL15
+	ld	b,5	
+	ld	a,(B31)
+	cp	0fh
+	jr	c,JP216
+	ld	b,5	
+	cp	19h
+	jr	c,JP216
+	ld	b,0ah	
+;
+JP216	push	bc	
+	di		
+	call	RTIN124
+	ei		
+	pop	bc	
+	jr	z,JP217
+	call	RTIN67
+	djnz	JP216
+;
+JP217	xor	a
+	ld	(17c1h),a
+	ret		
+;==============================================================================
+;
+RTIN30	ld	de,(191h)
+	ld	hl,40h
+	add	hl,de	
+	ld	(19fh),hl
+	ld	hl,4
+	add	hl,de	
+	ld	(195h),hl
+	ret		
+;==============================================================================
+;
+RTIN38	ld	a,(B42)
+	or	a
+	ret	z
+;
+	ld	a,(17c1h)
+	or	a
+	ret	nz
+;
+	dec	a
+	ld	(17c1h),a
+	call	RTIN31
+	ld	ix,(19fh)
+	ld	iy,(195h)
+	ld	bc,0
+	bit	0,(ix+0ch)	
+	jp	z,JP221
+	ld	b,1	
+	ld	c,40h	
+	ld	a,(ix+0ch)
+	ld	(B51),a
+	add	a,(ix+0dh)
+	inc	a
+	jp	nz,JP224
+	ld	a,(B51)
+	and	0ch
+	cp	0ch
+	jp	z,JP220
+	cp	4
+	jp	z,JP222
+	or	a
+	jp	z,JP220
+	call	RTIN137
+	ld	b,2	
+	ld	de,(B52)
+	ld	a,d
+	or	e
+	jp	z,JP222
+	ld	hl,(B53)
+	add	hl,de	
+	ex	de,hl	
+	ld	hl,780h
+	or	a
+	sbc	hl,de
+	jp	c,JP222
+;
+JP218	ld	hl,(B54)
+	ld	de,(B52)
+	ld	a,d
+	or	e
+	jr	z,JP220
+	add	hl,de	
+	jr	nc,JP219
+	ld	(B52),hl
+	ex	de,hl	
+	or	a
+	sbc	hl,de
+	ld	b,h
+	ld	c,l
+	ld	hl,(B54)
+	call	RTIN138
+	ld	hl,0f800h
+	ld	(B54),hl
+	jr	JP218	
+;
+JP219	ld	hl,(B54)
+	ld	bc,(B52)
+	call	RTIN138
+;
+JP220	ld	bc,0
+	xor	a
+	jr	JP222	
+;
+JP221	call	RTIN64
+	defm	'<< *** DIAG:0SRNGO *** >>'
+	nop
+;
+JP222	xor	a
+	ld	(B42),a
+	ld	(17c1h),a
+	ld	(ix+0fh),b
+	ld	(ix+0ch),c
+	inc	(iy+1)
+	di		
+	call	RTIN134
+	ei		
+	ret		
+;==============================================================================
+;
+RTIN138	ld	a,h
+	and	0f0h
+	cp	0f0h
+	jr	nz,JP223		 
+	push	bc	
+	call	RTIN100
+	pop	hl	
+	jp	RTIN112	
+;
+JP223	call	RTIN71
+	defm	'<< *** DIAG:SRBADDR *** >>'
+	nop
+;
+JP224	call	RTIN71
+	defm	'<< *** DIAG:SRXCSR *** >>'
+	nop
+;==============================================================================
+;
+RTIN137	ld	hl,(70h)
+	ld	a,h
+	or	0f8h
+	ld	h,a
+	ld	d,(ix+0ah)
+	ld	e,(ix+0bh)
+	ld	(B53),de
+	add	hl,de	
+	jr	nc,JP225
+	ld	de,0f800h
+	add	hl,de	
+	ld	a,h
+	or	0f8h
+	ld	h,a
+;
+JP225	ld	(B54),hl
+	ld	d,(ix+6)
+	ld	e,(ix+7)
+	ld	(B52),de
+	ret		
+;==============================================================================
+;
+B51	defb	00h
+B53	defw	0000h
+B52	defw	0000h
+B54	defw	0000h
+;==============================================================================
+;
+RTIN67	push	af	
+	push	bc	
+	push	de	
+	push	hl	
+	ld	hl,B55
+	bit	0,(hl)
+	ld	(hl),0
+	call	nz,RTIN70
+	and	7fh
+	ld	hl,(74h)
+	push	hl	
+	ld	hl,(72h)
+	ret		
+;==============================================================================
+;
+B55	defb	0ffh
+;==============================================================================
+;
+RTIN139	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	af	
+	ret		
+;
+;==============================================================================
+;The following routine decodes certain keystrokes.  It probably is jumped to
+;via a jp (hl).  74h contains several memory locations for handling this.
+;
+;Register A must contain the keystroke.
+;------------------------------------------------------------------------------
+JP252	cp	20h		;is it a space
+	jp	nc,JP253
+	cp	0dh		;is it a carriage return
+	jr	z,JP254
+	cp	0ah		;is it a line feed
+	jr	z,JP255
+	cp	8		;is it a backspace
+	jr	z,JP256
+	cp	9		;is it a tab
+	jr	z,JP257
+	cp	0ch		;is it a clear screen
+	jp	z,JP258
+	cp	7		;is it a bell
+	jr	z,JP259
+	cp	1bh		;is it an escape sequence
+	jr	nz,JP260		 
+	ld	hl,JP309
+	ld	(74h),hl
+	jp	RTIN139		;if it is none of the above then jump
+;
+JP260	jp	RTIN139	
+;
+JP254	ld	l,0
+	jp	JP261	
+;
+JP255	inc	h
+	jp	JP261	
+;
+JP256	ld	a,l
+	or	a
+	jp	z,JP261
+	dec	l
+	jp	JP261	
+;
+JP257	ld	a,l
+	or	7
+	inc	a
+	ld	l,a
+	jp	JP261	
+;
+JP259	ld	a,(120h)
+	and	1
+	jr	nz,JP261		 
+	ld	a,1
+	ld	(120h),a
+	out	(0a0h),a	;beep the computer
+	ld	a,8
+	push	hl	
+	ld	hl,JP318
+	call	JP245
+	pop	hl	
+	jr	JP261	
+;
+JP318	ld	a,0
+	ld	(120h),a
+	out	(0a0h),a	;turn off the beep
+	ret		
+;
+JP253	push	hl	
+	ld	b,a
+	call	RTIN143
+	ld	a,(76h)
+	bit	1,a
+	jr	z,JP262
+	ld	a,b
+	sub	5eh
+	jr	c,JP262
+	dec	a
+	and	7fh
+	ld	b,a
+;
+JP262	ld	a,(76h)
+	bit	2,a
+	jr	z,JP263
+	set	7,b
+;
+JP263	ld	(hl),b
+	pop	hl	
+	inc	l
+	jr	JP261	
+;
+JP261	ld	de,JP252
+	ld	(74h),de
+	ld	a,l
+	cp	50h
+	jr	c,JP264
+	ld	l,0
+	inc	h
+;
+JP264	ld	a,h
+	cp	18h
+	jr	c,JP265
+	ld	h,17h
+	push	hl	
+	ld	hl,(70h)
+	ld	de,50h
+	add	hl,de	
+	call	RTIN145
+	ld	hl,1700h
+	ld	bc,50h
+	call	RTIN147
+	pop	hl	
+;
+JP265	call	RTIN144
+	jp	RTIN139	
+;==============================================================================
+;
+RTIN144	push	hl	
+	ld	(72h),hl
+	call	RTIN146
+	ld	a,0eh
+	out	(0fch),a	;CRTC Address register 0000 1110 - 
+				;Register 14 LSB Cursor location
+	ld	a,h
+	out	(0fdh),a	;CRTC data register
+	ld	a,0fh
+	out	(0fch),a	;CRTC Address register 0000 1111 -
+				;Register 15 MSB cursor location
+	ld	a,l
+	out	(0fdh),a	;CRTC data register
+	pop	hl	
+	ret		
+;==============================================================================
+;
+RTIN147	push	de	
+	push	hl	
+	call	RTIN143
+	ld	d,20h	
+;
+JP267	ld	(hl),d
+	inc	l
+	jp	nz,JP266
+	inc	h
+	jp	nz,JP266
+	ld	h,0f8h
+;
+JP266	dec	c	
+	jp	nz,JP267
+	dec	b	
+	jp	p,JP267
+	pop	hl	
+	pop	de	
+	ret		
+;==============================================================================
+;
+JP258	ld	hl,0f800h
+	ld	de,0f801h
+	ld	bc,77fh
+	ld	(hl),20h
+	ldir
+	ld	hl,0
+	call	RTIN145
+	jp	JP261	
+;==============================================================================
+;
+JP309	sub	41h
+	cp	1bh
+	jp	nc,JP261
+	push	hl	
+	ld	hl,TABL27
+	add	a,a
+	ld	c,a
+	ld	b,0	
+	add	hl,bc	
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl)
+	ld	l,a
+	ex	(sp),hl
+	ret		
+;==============================================================================
+TABL27	defw	JP271
+	defw	JP272
+	defw	JP269
+	defw	JP268
+	defw	JP258
+	defw	JP261
+	defw	JP261
+	defw	JP273
+	defw	JP261
+	defw	JP274
+	defw	JP275
+	defw	JP276
+	defw	JP277
+	defw	JP261
+	defw	JP261
+	defw	JP278
+	defw	JP279
+	defw	JP280
+	defw	JP261
+	defw	JP261
+	defw	JP261
+	defw	JP261
+	defw	JP261
+	defw	JP261
+	defw	JP270
+	defw	JP261
+	defw	JP282
+;------------------------------------------------------------------------------
+;
+JP268	ld	a,l
+	or	a
+	jp	z,JP261
+	dec	l
+	jp	JP261	
+;
+JP269	ld	a,l
+	cp	4fh
+	jp	z,JP261
+	inc	l
+	jp	JP261	
+;
+JP271	ld	a,h
+	or	a
+	jp	z,JP261
+	dec	h
+	jp	JP261	
+;
+JP272	ld	a,h
+	cp	17h
+	jp	z,JP261
+	inc	h
+	jp	JP261	
+;
+JP273	ld	hl,0
+	jp	JP261	
+;
+JP270	ld	hl,JP287
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP280	ld	hl,JP288
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP282	ld	hl,JP289
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP275	ld	a,50h
+	sub	l
+	ld	c,a
+	ld	b,0	
+	call	RTIN147
+	jp	JP261	
+;
+JP274	ld	a,l
+	or	h
+	jp	z,JP258
+	ld	a,50h
+	sub	l
+	ld	e,a
+	ld	d,0	
+	ld	a,17h
+	sub	h
+	push	hl	
+	call	RTIN148
+	add	hl,de	
+	ld	b,h
+	ld	c,l
+	pop	hl	
+	call	RTIN147
+	jp	JP261	
+;
+JP278	push	hl	
+	ld	a,4fh
+	sub	l
+	ld	c,a
+	ld	b,0	
+	ld	l,4fh
+	call	RTIN143
+	ld	d,h
+	ld	e,l
+	dec	hl
+	call	RTIN149
+	inc	hl
+	ld	(hl),20h
+	pop	hl	
+	jp	JP261	
+;
+JP279	push	hl	
+	ld	a,4fh
+	sub	l
+	ld	c,a
+	ld	b,0	
+	call	RTIN143
+	ld	d,h
+	ld	e,l
+	inc	hl
+	call	RTIN150
+	dec	hl
+	ld	(hl),20h
+	pop	hl	
+	jp	JP261	
+;
+JP276	push	hl	
+	ld	a,17h
+	sub	h
+	call	RTIN148
+	ld	b,h
+	ld	c,l
+	ld	hl,174fh
+	call	RTIN143
+	ld	d,h
+	ld	e,l
+	ld	hl,0ffb0h
+	add	hl,de	
+	call	RTIN149
+	pop	hl	
+	ld	l,0
+	ld	bc,50h
+	call	RTIN147
+	jp	JP261	
+;
+JP277	push	hl	
+	ld	a,17h
+	sub	h
+	push	hl	
+	call	RTIN148
+	ld	b,h
+	ld	c,l
+	pop	hl	
+	ld	l,0
+	call	RTIN143
+	ld	d,h
+	ld	e,l
+	ld	hl,50h
+	add	hl,de	
+	call	RTIN150
+	ld	hl,1700h
+	ld	bc,50h
+	call	RTIN147
+	pop	hl	
+	jp	JP261	
+;==============================================================================
+;
+JP287	sub	20h
+	cp	18h
+	jp	nc,JP261
+	ld	h,a
+	ld	(72h),hl
+	ld	de,JP290
+	ld	(74h),de
+	jp	RTIN139	
+;
+JP290	sub	20h
+	cp	50h
+	jp	nc,JP261
+	ld	l,a
+	ld	(72h),hl
+	jp	JP261	
+;
+JP288	push	hl	
+	ld	hl,76h
+	cp	40h
+	jr	z,JP291
+	cp	44h
+	jr	z,JP292
+	cp	43h
+	jr	z,JP293
+	cp	63h
+	jr	z,JP294
+	cp	47h
+	jr	z,JP295
+	cp	67h
+	jr	z,JP296
+;
+JP297	pop	hl	
+	jp	JP261	
+;
+JP291	res	2,(hl)
+	jr	JP297	
+;
+JP292	set	2,(hl)
+	jr	JP297	
+;
+JP293	ld	a,(B56)
+	ld	(B57),a
+	ld	hl,TABL29
+	call	JP27
+	jr	JP297	
+;
+JP294	ld	a,(B56)
+	and	1fh
+	or	20h
+	ld	(B57),a
+	ld	hl,TABL29
+	call	JP27
+	jr	JP297	
+;
+JP295	set	1,(hl)
+	jr	JP297	
+;
+JP296	res	1,(hl)
+	jr	JP297	
+;
+;------------------------------------------------------------------------------
+TABL29	defb	0fch
+	defb	0ah
+	defb	0fdh
+B57	defb	69h
+	defb	00h
+B56	defb	69h
+;------------------------------------------------------------------------------
+;
+JP289	cp	3fh
+	jr	nz,JP298		 
+	ld	hl,JP299
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP298	ld	(B58),a
+	ld	hl,JP300
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP299	cp	33h
+	jp	nz,JP261
+	ld	hl,JP301
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP301	cp	33h
+	jp	nz,JP261
+	ld	hl,JP305
+	ld	(74h),hl
+	jp	RTIN139	
+;
+JP305	cp	68h
+	jr	z,JP306
+	cp	6ch
+	jr	z,JP307
+	jp	JP261	
+;
+JP306	ld	a,(B56)
+	and	1fh
+	or	60h
+	ld	(B56),a
+	ld	(B57),a
+	push	hl	
+	ld	hl,TABL29
+	call	JP27
+	pop	hl	
+	jp	JP261	
+;
+JP307	ld	a,(B56)
+	and	1fh
+	ld	(B56),a
+	ld	(B57),a
+	push	hl	
+	ld	hl,TABL29
+	call	JP27
+	pop	hl	
+	jp	JP261	
+;
+JP300	cp	20h
+	jp	nz,JP261
+	ld	hl,JP302
+	ld	(74h),hl
+	jp	RTIN139	
+;
+B58	defb	5fh
+;
+JP302	cp	71h
+	jp	nz,JP261
+	ld	a,(B58)
+	cp	5fh
+	jr	z,JP303
+	cp	7fh
+	jr	z,JP304
+	jp	JP261	
+;
+JP303	ld	a,(B56)
+	and	60h
+	or	9
+	ld	(B56),a
+	ld	(B59),a
+	ld	a,9
+	ld	(B60),a
+	push	hl	
+	ld	hl,TABL28
+	call	JP27
+	pop	hl	
+	jp	JP261	
+;
+JP304	ld	a,(B56)
+	and	60h
+	or	1
+	ld	(B56),a
+	ld	(B59),a
+	ld	a,8
+	ld	(B60),a
+	push	hl	
+	ld	hl,TABL28
+	call	JP27
+	pop	hl	
+	jp	JP261	
+;
+;------------------------------------------------------------------------------
+TABL28	defb	0fch
+	defb	0ah
+	defb	0fdh
+B59	defb	09h
+	defb	0fch
+	defb	0bh
+	defb	0fdh
+B60	defb	09h
+	defb	00h
+;==============================================================================
+;
+RTIN150	ld	a,b
+	or	c
+	ret	z
+	ld	a,h
+	or	0f8h
+	ld	h,a
+	ld	a,d
+	or	0f8h
+	ld	d,a
+	push	bc	
+	push	de	
+	push	hl	
+	push	hl	
+	add	hl,bc	
+	pop	hl	
+	jr	nc,JP285
+	xor	a
+	sub	l
+	ld	c,a
+	ld	a,0
+	sbc	a,h
+	ld	b,a
+;
+JP285	ex	de,hl	
+	push	hl	
+	add	hl,bc	
+	pop	hl	
+	jr	nc,JP286
+	xor	a
+	sub	l
+	ld	c,a
+	ld	a,0
+	sbc	a,h
+	ld	b,a
+;
+JP286	pop	hl	
+	pop	de	
+	push	bc	
+	ldir
+	pop	bc	
+	ex	(sp),hl
+	or	a
+	sbc	hl,bc
+	ld	b,h
+	ld	c,l
+	pop	hl	
+	jr	RTIN150	
+;==============================================================================
+;
+RTIN149	ld	a,b
+	or	c
+	ret	z
+	ld	a,h
+	or	0f8h
+	ld	h,a
+	ld	a,d
+	or	0f8h
+	ld	d,a
+	push	bc	
+	push	de	
+	push	hl	
+	ld	a,h
+	and	7
+	ld	h,a
+	inc	hl
+	ld	a,d
+	and	7
+	ld	d,a
+	inc	de	
+	push	hl	
+	or	a
+	sbc	hl,bc
+	pop	hl	
+	jr	nc,JP283
+	ld	b,h
+	ld	c,l
+;
+JP283	ex	de,hl	
+	push	hl	
+	or	a
+	sbc	hl,bc
+	pop	hl	
+	jr	nc,JP284
+	ld	b,h
+	ld	c,l
+;
+JP284	pop	hl	
+	pop	de	
+	push	bc	
+	lddr
+	pop	bc	
+	ex	(sp),hl
+	or	a
+	sbc	hl,bc
+	ld	b,h
+	ld	c,l
+	pop	hl	
+	jr	RTIN149	
+;==============================================================================
+;
+RTIN146	push	bc	
+	ld	a,h
+	ld	c,l
+	ld	b,0	
+	call	RTIN148
+	add	hl,bc	
+	ld	bc,(70h)
+	add	hl,bc	
+	ld	a,h
+	and	3fh
+	ld	h,a
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN143	call	RTIN146
+	ld	a,h
+	or	0f8h
+	ld	h,a
+	ret		
+;==============================================================================
+;
+RTIN148	push	de	
+	add	a,a
+	add	a,a
+	add	a,a
+	ld	l,a
+	ld	h,0
+	add	hl,hl
+	ld	d,h
+	ld	e,l
+	add	hl,hl
+	add	hl,hl
+	add	hl,de	
+	pop	de	
+	ret		
+;==============================================================================
+;
+RTIN145	ld	a,i
+	push	af	
+	di		
+	ld	(70h),hl
+	ld	a,0ch
+	out	(0fch),a	;CRTC Address register 0000 1100 -
+				;register 12 LSB start address
+	ld	a,h
+	and	3fh
+	out	(0fdh),a	;CRTC data register
+	ld	a,0dh
+	out	(0fch),a	;CRTC Address register 0000 1101 -
+				;register 13 MSB start address
+	ld	a,l
+	out	(0fdh),a	;CRTC data register
+	pop	af	
+	ret	po
+	ei		
+	ret		
+;
+;==============================================================================
+; Initialize the CRTC Video chip.
+;------------------------------------------------------------------------------
+RTIN70	push	af	
+	ld	hl,0
+	ld	(70h),hl
+	ld	(72h),hl
+	ld	hl,JP252
+	ld	(74h),hl
+	ld	a,0
+	ld	(120h),a
+	out	(0a0h),a	;beep the computer
+	xor	a
+	ld	(76h),a
+	ld	hl,TABL2	;load the beginning of the table into
+				;hl
+	ld	b,010h		;this is the counter for the number
+				;we need to ship to the CTRC
+JP319	ld	a,010h		;This is the number of registers we
+				;need to program.
+	sub	b		;subtract b to get the start register
+				;in the CRTC to program
+	out	(0fch),a	;CRTC Address register
+	ld	a,(hl)		;load the value from the table
+	out	(0fdh),a	;CRTC Data register
+	inc	hl
+	djnz	JP319
+	call	RTIN64
+;
+	defb	0ch
+	nop
+;
+	pop	af	
+	ret		
+;------------------------------------------------------------------------------
+;This is a table that is being output port fd by the 12th routine
+;Initilize the CRTC Video chip
+;			register	description
+TABL2	defb	63h	;0 - 0110 0011	program the horizontal frequency
+	defb	50h	;1 - 0101 0000	number of characters/horizontal line (80)
+	defb	54h	;2 - 0101 0100	horizontal sync position of the horizontal line
+	defb	0fh	;3 - 0000 1111	width of the horizontal sync pulse
+	defb	19h	;4 - 0001 1001	number of vertical character lines -1 (24)
+	defb	00h	;5 - 0000 0000	vertical scan adjust
+	defb	18h	;6 - 0001 1000	number of displayed vertical rows (24)
+	defb	18h	;7 - 0001 1000	vertical sync position
+	defb	00h	;8 - 0000 0000	non-interlace raster scan mode
+	defb	09h	;9 - 0000 1001	number of scan lines/character row
+	defb	69h	;10- 0110 1001	cursor start, blink freq., enable blink
+	defb	09h	;11- 0000 1001	cursor end, sets cursor end scan line
+	defb	00h	;12- 0000 0000	
+	defb	00h	;13- 0000 0000	12 & 13 sets the cursor start address
+	defb	00h	;14- 0000 0000	
+	defb	00h	;15- 0000 0000	14 & 15 sets the current cursor address
+;==============================================================================
+;
+JP320	call	RTIN153
+	jr	z,JP320
+	in	a,(0fch)
+	and	7fh
+	ret		
+;==============================================================================
+;
+RTIN153	in	a,(0ffh)
+	and	80h
+	ret		
+;==============================================================================
+;
+RTIN64	ex	(sp),hl
+	push	af	
+	call	RTIN66
+	pop	af	
+	ex	(sp),hl
+	ret		
+;==============================================================================
+;
+RTIN66	ld	a,(hl)
+	inc	hl
+	or	a
+	ret	z
+;
+	call	RTIN67
+	jr	RTIN66	
+;==============================================================================
+;
+RTIN65	push	af	
+	ld	a,3dh
+	call	RTIN67
+	pop	af	
+	push	af	
+	call	RTIN68
+	ld	a,20h
+	call	RTIN67
+	pop	af	
+	ret		
+;==============================================================================
+;
+RTIN68	push	af	
+	rrca		
+	rrca		
+	rrca		
+	rrca		
+	call	RTIN69
+	pop	af	
+;==============================================================================
+;
+RTIN69	call	RTIN154
+	jp	RTIN67	
+;==============================================================================
+;
+	push	af	
+	ld	a,3dh
+	call	RTIN67
+	call	RTIN155
+	ld	a,20h
+	call	RTIN67
+	pop	af	
+	ret		
+;==============================================================================
+;
+RTIN155	push	hl	
+	ld	a,h
+	call	RTIN68
+	pop	hl	
+	ld	a,l
+	jr	RTIN68	
+;==============================================================================
+;
+RTIN152	push	af	
+	rlca		
+	rlca		
+	rlca		
+	rlca		
+	call	RTIN156
+	pop	af	
+;==============================================================================
+;
+RTIN156	call	RTIN154
+	ld	(hl),a
+	inc	hl
+	ret		
+;==============================================================================
+;
+RTIN154	and	0fh
+	add	a,90h
+	daa
+	adc	a,40h
+	daa
+	ret		
+;==============================================================================
+;
+;==============================================================================
+;NMI Routine
+	push	af	
+	ld	a,(181h)
+	inc	a
+	ld	(181h),a
+	ld	a,0ffh
+	ld	(180h),a
+	in	a,(0feh)
+	push	hl	
+	ld	hl,(B21)
+	inc	hl
+	ld	(B21),hl
+	pop	hl	
+	pop	af	
+	retn
+;------------------------------------------------------------------------------
+B21	defb	00h
+	defb	00h
+;==============================================================================
+;
+RTIN37	ld	a,(180h)
+	or	a
+	ret	z
+;
+	xor	a
+	ld	(180h),a
+	call	RTIN31
+	call	RTIN142
+	ld	ix,(193h)
+	ld	b,(ix+0)
+	bit	0,b
+	ret	nz
+;
+	ld	hl,181h
+	xor	a
+	bit	1,b
+	jr	nz,JP250		 
+	ld	(hl),a
+	ret		
+;
+JP250	inc	a
+	dec	(hl)
+	jr	nz,JP250		 
+	ld	(ix+1),a
+	set	0,(ix+0)	
+	di		
+	ld	a,(15eh)
+	or	010h
+	out	(0deh),a
+	and	0efh
+	out	(0deh),a
+	ei		
+	ret		
+;==============================================================================
+;
+JP321	ld	hl,JP321
+	ld	a,1eh
+	call	JP245
+	ld	a,(181h)
+	cp	96h
+	jr	c,JP322
+	ld	a,(B27)
+	or	a
+	jr	nz,JP322		 
+;
+	call	RTIN71
+	defm	'68k crashed'
+	nop
+;
+JP322	call	RTIN125
+	ei		
+	nop
+	nop
+	di		
+	call	RTIN151
+	ei		
+	nop
+	nop
+	di		
+	jp	RTIN81	
+;==============================================================================
+;
+RTIN25	call	RTIN31
+	ld	ix,(191h)
+	ld	de,0
+	add	ix,de
+	ld	(193h),ix
+	xor	a
+	ld	(ix+0),a
+	ld	(181h),a
+	dec	a
+	ld	(182h),a
+	ld	hl,TABL32
+	ld	de,66h
+	ld	bc,3
+	ldir			;make a copy of the 3 bytes starting
+				; at 7659 into 66,67,68.
+	ld	a,(17fh)
+	or	20h
+	ld	(17fh),a
+	out	(0ffh),a	;enable the video ram and the display,
+				; in the 80 character mode, and the RTC
+	in	a,(0feh)	;Clear RTC interrupt
+	ld	hl,JP321	
+	ld	a,3
+	jp	JP245	
+;
+;----->>>The 3 bytes following are some table information
+TABL32	defb	0c3h
+	defb	91h
+	defb	75h  	
+;----->>>End of the 3 byte table
+;
+JP245	push	hl	
+	ld	c,a
+	ld	hl,182h
+	xor	a
+;
+JP246	add	a,(hl)
+	cp	c
+	jr	nc,JP248
+	inc	(hl)
+	jr	z,JP247
+	inc	hl
+	inc	hl
+	inc	hl
+	jr	JP246	
+;
+JP247	dec	(hl)
+;
+JP248	sub	(hl)
+	ld	b,a
+	ld	a,c
+	sub	b
+	ld	c,a
+	ld	a,(hl)
+	cp	0ffh
+	jr	z,JP249
+	sub	c
+	ld	(hl),a
+;
+JP249	ld	a,c
+	push	hl	
+	ex	de,hl	
+	ld	hl,18eh
+	or	a
+	sbc	hl,de
+	ld	b,h
+	ld	c,l
+	ld	hl,18dh
+	ld	de,190h
+	lddr
+	pop	hl	
+	ld	(hl),a
+	inc	hl
+	pop	de	
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d
+	ret		
+;==============================================================================
+;
+RTIN142	ld	a,(182h)
+	cp	0ffh
+	ret	z
+;
+	dec	a
+	ld	(182h),a
+	ret	nz
+;
+JP251	ld	a,(182h)
+	or	a
+	ret	nz
+;
+	ld	de,JP323
+	push	de	
+	ld	hl,(183h)
+	di		
+	jp	(hl)	
+JP323	ei		
+	ld	hl,185h
+	ld	de,182h
+	ld	bc,0ch
+	ldir
+	jr	JP251	
+;==============================================================================
+;
+RTIN140	push	bc	
+	ld	b,(ix+2)
+	ld	c,(ix+3)
+	set	7,b
+	res	6,b
+	push	bc	
+	ld	b,(ix+2)
+	rl	b
+	ld	a,(ix+1)
+	rl	a
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,(15eh)
+	rla		
+	rl	b
+	rra		
+	ld	(15eh),a
+	out	(0deh),a
+	pop	ix
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN31	push	af	
+	ld	a,(15eh)
+	and	7fh
+	ld	(15eh),a
+	out	(0deh),a
+	xor	a
+	ld	(15fh),a
+	out	(0dfh),a
+	pop	af	
+	ret		
+;==============================================================================
+;
+RTIN141	ld	a,(15eh)
+	add	a,80h
+	ld	(15eh),a
+	out	(0deh),a
+	ret	nc
+;
+	ld	a,(15fh)
+	inc	a
+	ld	(15fh),a
+	out	(0dfh),a
+	ret		
+;==============================================================================
+;
+RTIN99	push	ix
+	push	bc	
+	push	de	
+	push	hl	
+	ld	a,(15fh)
+	ld	d,a	
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN140
+	push	ix
+	pop	de	
+;
+JP236  	push	hl	
+	push	bc	
+	ld	hl,0ffffh
+	or	a
+	sbc	hl,de
+	res	7,h
+	res	6,h
+	inc	hl
+	sbc	hl,bc
+	jr	nc,JP237
+	add	hl,bc	
+	ld	b,h
+	ld	c,l
+;
+JP237	pop	hl	
+	or	a
+	sbc	hl,bc
+	ex	(sp),hl
+	ldir
+	pop	bc	
+	call	RTIN141
+	res	6,d
+	ld	a,c
+	or	b
+	jr	nz,JP236		 
+	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	ix
+	ret		
+;==============================================================================
+;
+RTIN100	push	ix
+	push	bc	
+	push	de	
+	push	hl	
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN140
+	push	ix
+	pop	de	
+;
+JP238	push	hl	
+	push	bc	
+	ld	hl,0ffffh
+	or	a
+	sbc	hl,de
+	res	7,h
+	res	6,h
+	inc	hl
+	or	a
+	sbc	hl,bc
+	jr	nc,JP239
+	add	hl,bc	
+	ld	b,h
+	ld	c,l
+;
+JP239	pop	hl	
+	or	a
+	sbc	hl,bc
+	ex	(sp),hl
+	ex	de,hl	
+	ldir
+	ex	de,hl	
+	pop	bc	
+	call	RTIN141
+	res	6,d
+	ld	a,c
+	or	b
+	jr	nz,JP238		 
+	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	ix
+	ret		
+;==============================================================================
+;
+RTIN114	push	ix
+	push	bc	
+	push	de	
+	push	hl	
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN140
+	push	ix
+	pop	de	
+;
+JP240	push	hl	
+	push	bc	
+	ld	hl,0ffffh
+	or	a
+	sbc	hl,de
+	res	7,h
+	res	6,h
+	inc	hl
+	sbc	hl,bc
+	jr	nc,JP241
+	add	hl,bc	
+	ld	b,h
+	ld	c,l
+;
+JP241	pop	hl	
+	or	a
+	sbc	hl,bc
+	ex	(sp),hl
+	ex	de,hl	
+	ld	a,b
+	ld	b,c
+	ld	c,e
+;
+JP242	dec	b	
+	inc	b	
+	jr	nz,JP243		 
+	or	a
+	jr	z,JP244
+	dec	a
+;
+JP243	inir
+	jr	JP242	
+;
+JP244	ex	de,hl	
+	pop	bc	
+	call	RTIN141
+	res	6,d
+	ld	a,c
+	or	b
+	jr	nz,JP240		 
+	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	ix
+	ret		
+;==============================================================================
+;
+RTIN111	push	ix
+	push	bc	
+	push	de	
+	push	hl	
+	ld	a,(15fh)
+	ld	d,a
+	ld	a,(15eh)
+	ld	e,a
+	push	de	
+	call	RTIN140
+	push	ix
+	pop	de	
+;
+JP230	push	hl	
+	push	bc	
+	ld	hl,0ffffh
+	or	a
+	sbc	hl,de
+	res	7,h
+	res	6,h
+	inc	hl
+	or	a
+	sbc	hl,bc
+	jr	nc,JP231
+	add	hl,bc	
+	ld	b,h
+	ld	c,l
+;
+JP231  	pop	hl	
+	or	a
+	sbc	hl,bc
+	ex	(sp),hl
+	ex	de,hl	
+	ld	a,b
+	ld	b,c
+	ld	c,e
+;
+JP232	dec	b	
+	inc	b	
+	jr	nz,JP233		 
+	or	a
+	jr	z,JP234
+	dec	a
+;
+JP233	otir
+	jr	JP232	
+;
+JP234	ex	de,hl	
+	pop	bc	
+	call	RTIN141
+	res	6,d
+	ld	a,c
+	or	b
+	jr	nz,JP230		 
+	pop	de	
+	ld	a,d
+	ld	(15fh),a
+	out	(0dfh),a
+	ld	a,e
+	ld	(15eh),a
+	out	(0deh),a
+	pop	hl	
+	pop	de	
+	pop	bc	
+	pop	ix
+	ret		
+;==============================================================================
+;
+RTIN112	ld	a,(ix+3)
+	add	a,l
+	ld	(ix+3),a
+	ld	a,(ix+2)
+	adc	a,h
+	ld	(ix+2),a
+	ld	a,(ix+1)
+	adc	a,0
+	ld	(ix+1),a
+	ret		
+;==============================================================================
+;
+RTIN113	ld	a,(ix+3)
+	sub	l
+	ld	(ix+3),a
+	ld	a,(ix+2)
+	sbc	a,h
+	ld	(ix+2),a
+	ld	a,(ix+1)
+	sbc	a,0
+	ld	(ix+1),a
+	ret		
+;==============================================================================
+;
+;==============================================================================
+;Prior to calling this routine, HL must contain the address of the table
+;to be sent out a port.  The table must end in a null (00).
+;------------------------------------------------------------------------------
+JP27	push	bc		;save the contents of BC
+	ld	b,0		;set b to 0
+;
+JP228	ld	a,(hl)		;load A with a byte from the table
+				;this is the port
+	inc	hl		;point HL to the next byte
+				;this is the byte to send to the port
+	or	a
+	jr	z,JP229		;if A contains a zero then jump
+	ld	c,a		;otherwise load the value into C
+	ld	a,(hl)		;get the byte to ship into A
+	inc	hl		;point to the next byte of the table.
+				;this will be a port or a null
+	push	hl		;save HL
+	ld	hl,80h		;load hl with 0080h
+	add	hl,bc		;add it to BC
+	ld	(hl),a		;load the contaents of A into 0080h
+	out	(c),a		;send it
+	pop	hl		;restore HL
+	jr	JP228		;keep on doing it until we reach a null
+;
+JP229	pop	bc		;restore the contents of BC
+	ret			;go back where we came from
+;==============================================================================
+;
+RTIN115	ld	bc,0
+	or	a
+;
+JP226	sbc	hl,de
+	jp	c,JP227
+	inc	bc	
+	jr	JP226	
+;
+JP227	add	hl,de	
+	ret		
+;==============================================================================
+;
+;
+JR326	push	bc	
+	push	de	
+	ex	de,hl	
+	ld	hl,0
+;
+JP325	ld	a,b
+	or	c
+	jr	z,JP324
+	add	hl,de	
+	dec	bc
+	jr	JP325	
+;
+JP324	pop	de	
+	pop	bc	
+	ret		
+;==============================================================================
+;
+RTIN78	ld	a,(2e5h)
+	or	a
+	ret	nz
+;
+	or	0ffh
+	ld	(2e5h),a
+	xor	a
+	ret		
+;==============================================================================
+;
+;	DMA Initialization routine
+;==============================================================================
+;
+RTIN24	xor	a
+	ld	(2e5h),a
+	push	bc	
+	push	hl	
+	ld	hl,DMAI		;load the address of the table into HL
+	ld	bc,4f8h		;load B with the number of bytes, and
+				;C with the DMA port
+	otir			;initialize the DMA
+	pop	hl	
+	pop	bc	
+	ret		
+;
+;------------------------------------------------------------------------------
+;This table is being output by the 13th routine to port f8, the DMA
+DMAI	defb	83h		;Disable the DMA
+	defb	8bh		;Reinitialize the status byte in the DMA
+	defb	0afh		;Disable interrupts
+	defb	0c3h		;reset the DMA
+;==============================================================================
+;
+;       DMA routine to ship data to the floppy disk	
+;==============================================================================
+;
+RTIN97	ld	(B25),hl	
+	ld	hl,TABL6	;load HL with the beginning of the
+				;table
+	ld	bc,0ef8h	;load B with the number of bytes to
+				;ship to the DMA. Load C with the
+				;port address of the DMA
+	otir			;program the sucker
+	ret			;go back where we came from
+;------------------------------------------------------------------------------
+;this is some sort of table being output to a device by the 73rd routine
+TABL6	defb	79h     ;Port B --> Port A
+B25	defw	0000h   ;Starting address for Port A
+	defw	2ee0h	;Block Length = 2ee0 or 12,000 bytes
+	defb	14h	;Port A is memory, and increments
+	defb	28h	;Port B is I/O, address is fixed
+	defb	0c5h	;Burst Mode
+	defb	0e7h	;Port B address
+	defb	8ah	;Ready Active high, CE only, Stop on end of block
+	defb	0cfh	;Load DMA with parameters
+	defb	05h	;Port A --> Port B
+	defb	0cfh	;Load DMA with parameters
+	defb	87h	;enable the DMA
+;==============================================================================
+;
+; DMA routine to get data from the floppy disk and put it into memory.
+;==============================================================================
+;
+RTIN98	ld	(B24),hl	;load the memory address we want the
+				;data put in, into the starting address
+				;for B (for the DMA table)
+	ld	hl,TABL5	;load HL with table address
+	ld	bc,0cf8h	;load B with the number of DMA program
+				;bytes. Load C with the DMA address
+	otir			;program the mother
+	ret			;go back where we came
+;------------------------------------------------------------------------------
+;This table is being sent out port f8 by the 70th routine.
+TABL5	defb	6dh	;Port A --> Port B
+	defb	0e7h	;Port A Address
+	defw	0400h	;Block Length 400h (1024)
+	defb	2ch	;Port A is I/O, and has fixed address
+	defb	10h	;Port B is Memory, and address increments
+	defb	0cdh	;Burst Mode
+B24	defw	0000h	;Starting address for B
+	defb	8ah	;Ready Active High, CE Only, Stop on end of block
+	defb	0cfh	;load the parameters into the DMA
+	defb	87h	;Enable the DMA
+;==============================================================================
+;
+;
+;
+         	end
+;==============================================================================
+;Memory locations used for flags
+;------------------------------------------------------------------------------
+;38h
+;------------------------------------------------------------------------------
+;39h
+;------------------------------------------------------------------------------
+;77h
+;------------------------------------------------------------------------------
+;120h	keeps track of the beeper byte for the sound board 1 = ON, 0 = OFF
+;------------------------------------------------------------------------------
+;15fh	contains information concerning the z80 address latch for 68k 
+;	memory transfers
+;------------------------------------------------------------------------------
+;15eh	Status of the 68k control lines, for the z80
+;------------------------------------------------------------------------------
+;17fh	contains information about port FF
+;------------------------------------------------------------------------------
+;141h	keeps track  of the last write to port C1 (HD Control port)
+;------------------------------------------------------------------------------
+;149h	contains the write pre-comp cylinder of the HD
+;------------------------------------------------------------------------------
+;14bh	contains the sector count of the HD
+;------------------------------------------------------------------------------
+;14ch	contains the last HD cylinder LSB
+;------------------------------------------------------------------------------
+;14dh	contains the last HD cylinder MSB
+;------------------------------------------------------------------------------
+;14eh	contains the contents of the SDH register, in the HD
+;------------------------------------------------------------------------------
+;14fh	contains the last command issued to the HD
+;------------------------------------------------------------------------------
+;164h	contains the last FDC command
+;------------------------------------------------------------------------------
+;16fh	contains the drive mode, which drive was selected, and the side
+;------------------------------------------------------------------------------
+;191h
+;------------------------------------------------------------------------------
+;19bh
+;------------------------------------------------------------------------------
+;2e4h
+;------------------------------------------------------------------------------
+;2f1h	contains some FD data
+;------------------------------------------------------------------------------
+;2fdh	keeps track of the FD status based on where in the program it
+;	is reached. Jumps to various locations are provided via a jp (hl)
+;	instruction, with hl being loaded with the contents of this
+;	location before it is executed.
+;------------------------------------------------------------------------------
+;343h	keeps track of the HD status based on where in the program it
+;	is reached. Jumps to various locations are provided via a jp (hl)
+;	instruction, with hl being loaded with the contents of this
+;	location before it is executed.
+;------------------------------------------------------------------------------
+;8006h
+;------------------------------------------------------------------------------

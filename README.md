@@ -15,4 +15,8 @@ The TRS-XENIX operating system can be found in the <a href="https://github.com/p
 
 ### TRS-XENIX Software Development System
 
-### z80ctl
+The TRS-XENIX Software Development System can be found in the <a href="https://github.com/pski/model2archive/tree/master/Software/Xenix">model2archive</a>.
+
+### <a href="diskutil">diskutil</a>
+
+### <a href="z80ctl">z80ctl</a>

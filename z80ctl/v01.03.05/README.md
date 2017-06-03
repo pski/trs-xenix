@@ -1,7 +1,7 @@
-## v1.3.5
+## v01.03.05
 
 This is the z80ctl program for TRS-XENIX 1.3.5.  This was the last version of TRS-XENIX v1.x to be released.
-This version will run on all machines incuding the Tandy 6000 HD.
+This version will run on all machines including the Tandy 6000 HD.
 
 This copy was taken from a fresh install of v1.3.5 on a Tandy 6000 HD.
 

@@ -11,6 +11,8 @@ There are 2 main versions of TRS-XENIX.  TRS-XENIX 1.x which was based on Micros
 
 ### TRS-XENIX Operating System
 
+The TRS-XENIX operating system can be found in the <a href="https://github.com/pski/model2archive/tree/master/Software/Xenix">model2archive</a>.
+
 ### TRS-XENIX Software Development System
 
 ### z80ctl

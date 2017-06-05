@@ -29,6 +29,19 @@
 ; certain if the execution and load addresses are little or big endian.
 ; To be safe simply choose addresses that are a multiple of 256.
 
+		org	$70
+vram_pos:	defs	2	; top left corner of screen in video RAM
+cursor_xy:	defs	2	; cursor XY position (high = Y, low = X)
+console_vec:	defs	2	; routine to handle next console output byte
+console_flags:	defs	1	; output flags (guessing inverse mode, etc)
+	; bit 1 - characters ^ and up output as byte 0, 1, 2, ...
+	; bit 2 - output inverse characters if set
+
+video_RAM	equ	$f800
+
+; console_vec changes though various conout_* routines to track the current
+; state of escape sequences being output.
+
 		org	04fcch
 _begin:		defb	002h
 		defb	006h
@@ -3811,7 +3824,7 @@ _6f9d:		ld	hl,(_707e)
 		ld	c,l
 		ld	hl,(_707e)
 		call	_7005
-		ld	hl,0f800h
+		ld	hl,video_RAM
 		ld	(_707e),hl
 		jr	_6f9d
 
@@ -3848,7 +3861,7 @@ _7014:		call	panic
 _7017:		ascii	'<< *** DIAG:SRBADDR *** >>',0
 _7032:		call	panic
 		ascii	'<< *** DIAG:SRXCSR *** >>',0
-_704f:		ld	hl,(00070h)
+_704f:		ld	hl,(vram_pos)
 		ld	a,h
 		or	0f8h
 		ld	h,a
@@ -3857,7 +3870,7 @@ _704f:		ld	hl,(00070h)
 		ld	(_707a),de
 		add	hl,de
 		jr	nc,_706b
-		ld	de,0f800h
+		ld	de,video_RAM
 		add	hl,de
 		ld	a,h
 		or	0f8h
@@ -3875,6 +3888,7 @@ _707c:		defb	000h
 		defb	000h			
 _707e:		defb	000h			
 		defb	000h			
+
 putc:		push	af
 		push	bc
 		push	de
@@ -3882,63 +3896,63 @@ putc:		push	af
 		ld	hl,_7098
 		bit	0,(hl)
 		ld	(hl),000h
-		call	nz,_74dd
+		call	nz,console_reset
 		and	07fh
-		ld	hl,(00074h)
+		ld	hl,(console_vec)
 		push	hl
-		ld	hl,(00072h)
+		ld	hl,(cursor_xy)
 		ret	
 
 _7098:		defb	0ffh
-_7099:		pop	hl
+char_done:	pop	hl
 		pop	de
 		pop	bc
 		pop	af
 		ret	
 
-_709e:		cp	020h
-		jp	nc,_7108
-		cp	00dh
-		jr	z,_70cc
-		cp	00ah
-		jr	z,_70d1
-		cp	008h
-		jr	z,_70d5
-		cp	009h
-		jr	z,_70de
-		cp	00ch
-		jp	z,_7190
-		cp	007h
-		jr	z,_70e6
-		cp	01bh
+conout_start:	cp	' '
+		jp	nc,char_normal
+		cp	13
+		jr	z,char_cr
+		cp	10
+		jr	z,char_lf
+		cp	8
+		jr	z,char_bs
+		cp	9
+		jr	z,char_tab
+		cp	12
+		jp	z,cls
+		cp	7
+		jr	z,char_bell
+		cp	27
 		jr	nz,_70c9
-		ld	hl,_71a6
-		ld	(00074h),hl
-		jp	_7099
+		ld	hl,conout_esc
+		ld	(console_vec),hl
+		jp	char_done
 
-_70c9:		jp	_7099
+_70c9:		jp	char_done
 
-_70cc:		ld	l,000h
-		jp	_712b
+char_cr:	ld	l,000h
+		jp	conout_done
 
-_70d1:		inc	h
-		jp	_712b
+char_lf:	inc	h
+		jp	conout_done
 
-_70d5:		ld	a,l
+char_bs:	ld	a,l
 		or	a
-		jp	z,_712b
+		jp	z,conout_done
 		dec	l
-		jp	_712b
+		jp	conout_done
 
-_70de:		ld	a,l
+char_tab:	ld	a,l
 		or	007h
 		inc	a
 		ld	l,a
-		jp	_712b
+		jp	conout_done
 
-_70e6:		ld	a,(00120h)
+char_bell:	ld	a,(00120h)
 		and	001h
-		jr	nz,_712b
+		jr	nz,conout_done
 		ld	a,001h
 		ld	(00120h),a
 		out	(0a0h),a
@@ -3947,17 +3961,17 @@ _70e6:		ld	a,(00120h)
 		ld	hl,_7100
 		call	_765c
 		pop	hl
-		jr	_712b
+		jr	conout_done
 
 _7100:		ld	a,000h
 		ld	(00120h),a
 		out	(0a0h),a
 		ret	
 
-_7108:		push	hl
+char_normal:	push	hl
 		ld	b,a
-		call	_74ab
-		ld	a,(00076h)
+		call	xy2vram_addr
+		ld	a,(console_flags)
 		bit	1,a
 		jr	z,_711d
 		ld	a,b
@@ -3966,41 +3980,46 @@ _7108:		push	hl
 		dec	a
 		and	07fh
 		ld	b,a
-_711d:		ld	a,(00076h)
+_711d:		ld	a,(console_flags)
 		bit	2,a
-		jr	z,_7126
-		set	7,b
-_7126:		ld	(hl),b
+		jr	z,noinv
+		set	7,b		; make character inverse
+noinv:		ld	(hl),b
 		pop	hl
 		inc	l
-		jr	_712b
+		jr	conout_done
 
-_712b:		ld	de,_709e
-		ld	(00074h),de
+; Output sequence has finished.  Check cursor XY position HL for validity
+; and update it and the cursor offset.
+
+conout_done:	ld	de,conout_start
+		ld	(console_vec),de
 		ld	a,l
-		cp	050h
-		jr	c,_713a
-		ld	l,000h
-		inc	h
-_713a:		ld	a,h
-		cp	018h
-		jr	c,_7156
-		ld	h,017h
+		cp	80
+		jr	c,xok		; OK if cursor X in 0 .. 79 range
+		ld	l,0		; cursor back to start line
+		inc	h		; move down to next line
+xok:		ld	a,h
+		cp	24
+		jr	c,yok		; OK if cursor Y in 0 .. 23 range
+		ld	h,23		; move cursor Y to last line
 		push	hl
-		ld	hl,(00070h)
-		ld	de,00050h
+; scroll the screen up by moving screen start forward in VRAM
+		ld	hl,(vram_pos)
+		ld	de,80
 		add	hl,de
-		call	_74c2
-		ld	hl,01700h
-		ld	bc,00050h
-		call	_7173
+		call	set_vram_pos
+		ld	hl,23*256+0
+		ld	bc,80
+		call	erase_chars
 		pop	hl
-_7156:		call	_715c
-		jp	_7099
+yok:		call	set_hardware_cursor
+		jp	char_done
 
-_715c:		push	hl
-		ld	(00072h),hl
-		call	_7497
+set_hardware_cursor:
+		push	hl
+		ld	(cursor_xy),hl
+		call	xy2vram_off
 		ld	a,00eh
 		out	(0fch),a
 		ld	a,h
@@ -4012,41 +4031,43 @@ _715c:		push	hl
 		pop	hl
 		ret	
 
-_7173:		push	de
+; Erase the next BC characters (for clearing to EOL and such)
+
+erase_chars:	push	de
 		push	hl
-		call	_74ab
-		ld	d,020h
-_717a:		ld	(hl),d
+		call	xy2vram_addr
+		ld	d,' '
+echr:		ld	(hl),d
 		inc	l
-		jp	nz,_7185
+		jp	nz,hlok
 		inc	h
-		jp	nz,_7185
-		ld	h,0f8h
-_7185:		dec	c
-		jp	nz,_717a
+		jp	nz,hlok
+		ld	h,0f8h		; wrap around to start of video RAM
+hlok:		dec	c
+		jp	nz,echr
 		dec	b
-		jp	p,_717a
+		jp	p,echr
 		pop	hl
 		pop	de
 		ret	
 
-_7190:		ld	hl,0f800h
-		ld	de,0f801h
-		ld	bc,0077fh
-		ld	(hl),020h
+cls:		ld	hl,video_RAM
+		ld	de,video_RAM+1
+		ld	bc,80*24-1
+		ld	(hl),' '
 		ldir	
-		ld	hl,00000h
-		call	_74c2
-		jp	_712b
+		ld	hl,0
+		call	set_vram_pos
+		jp	conout_done
 
-_71a6:		sub	041h
+conout_esc:	sub	'A'
 		cp	01bh
-		jp	nc,_712b
+		jp	nc,conout_done
 		push	hl
-		ld	hl,_71bc
+		ld	hl,escape_codes
 		add	a,a
 		ld	c,a
-		ld	b,000h
+		ld	b,0
 		add	hl,bc
 		ld	a,(hl)
 		inc	hl
@@ -4055,87 +4076,89 @@ _71a6:		sub	041h
 		ex	(sp),hl
 		ret	
 
-_71bc:		word	_7205
-		word	_720e
-		word	_71fb
-		word	_71f2
-		word	_7190
-		word	_712b
-		word	_712b
-		word	_7218
-		word	_712b
-		word	_7245
-		word	_7239
-		word	_7291
-		word	_72b5
-		word	_712b
-		word	_712b
-		word	_7261
-		word	_727a
-		word	_7227
-		word	_712b
-		word	_712b
-		word	_712b
-		word	_712b
-		word	_712b
-		word	_712b
-		word	_721e
-		word	_712b
-		word	_7230
-_71f2:		ld	a,l
+; Table of handler routines for escape codes A .. Z and [
+escape_codes:	word	cursor_up	; esc-A
+		word	cursor_down	; esc-B
+		word	cursor_right	; esc-C
+		word	cursor_left	; esc-D
+		word	cls		; esc-E
+		word	conout_done	; esc-F
+		word	conout_done	; esc-G
+		word	cursor_home	; esc-H
+		word	conout_done	; esc-I
+		word	_7245		; esc-J
+		word	clear_to_eol	; esc-K
+		word	_7291		; esc-L
+		word	_72b5		; esc-M
+		word	conout_done	; esc-N
+		word	conout_done	; esc-O
+		word	_7261		; esc-P
+		word	_727a		; esc-Q
+		word	esc_r		; esc-R
+		word	conout_done	; esc-S
+		word	conout_done	; esc-T
+		word	conout_done	; esc-U
+		word	conout_done	; esc-V
+		word	conout_done	; esc-W
+		word	conout_done	; esc-X
+		word	esc_y		; esc-Y
+		word	conout_done	; esc-Z
+		word	esc_std		; esc-[
+
+cursor_left:	ld	a,l
 		or	a
-		jp	z,_712b
+		jp	z,conout_done
 		dec	l
-		jp	_712b
+		jp	conout_done
 
-_71fb:		ld	a,l
-		cp	04fh
-		jp	z,_712b
+cursor_right:	ld	a,l
+		cp	80-1
+		jp	z,conout_done
 		inc	l
-		jp	_712b
+		jp	conout_done
 
-_7205:		ld	a,h
+cursor_up:	ld	a,h
 		or	a
-		jp	z,_712b
+		jp	z,conout_done
 		dec	h
-		jp	_712b
+		jp	conout_done
 
-_720e:		ld	a,h
-		cp	017h
-		jp	z,_712b
+cursor_down:	ld	a,h
+		cp	23
+		jp	z,conout_done
 		inc	h
-		jp	_712b
+		jp	conout_done
 
-_7218:		ld	hl,00000h
-		jp	_712b
+cursor_home:	ld	hl,0
+		jp	conout_done
 
-_721e:		ld	hl,_72db
-		ld	(00074h),hl
-		jp	_7099
+esc_y:		ld	hl,conout_esc_y
+		ld	(console_vec),hl
+		jp	char_done
 
-_7227:		ld	hl,_72fe
-		ld	(00074h),hl
-		jp	_7099
+esc_r:		ld	hl,conout_esc_r
+		ld	(console_vec),hl
+		jp	char_done
 
-_7230:		ld	hl,_7354
-		ld	(00074h),hl
-		jp	_7099
+esc_std:	ld	hl,conout_esc_std
+		ld	(console_vec),hl
+		jp	char_done
 
-_7239:		ld	a,050h
+clear_to_eol:	ld	a,80
 		sub	l
 		ld	c,a
-		ld	b,000h
-		call	_7173
-		jp	_712b
+		ld	b,0
+		call	erase_chars
+		jp	conout_done
 
 _7245:		ld	a,l
 		or	h
-		jp	z,_7190
-		ld	a,050h
+		jp	z,cls
+		ld	a,80
 		sub	l
 		ld	e,a
-		ld	d,000h
-		ld	a,017h
+		ld	d,0
+		ld	a,23
 		sub	h
 		push	hl
 		call	line_offset
@@ -4143,124 +4166,124 @@ _7245:		ld	a,l
 		ld	b,h
 		ld	c,l
 		pop	hl
-		call	_7173
-		jp	_712b
+		call	erase_chars
+		jp	conout_done
 
 _7261:		push	hl
-		ld	a,04fh
+		ld	a,80-1
 		sub	l
 		ld	c,a
-		ld	b,000h
-		ld	l,04fh
-		call	_74ab
+		ld	b,0
+		ld	l,80-1
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		dec	hl
 		call	_745d
 		inc	hl
-		ld	(hl),020h
+		ld	(hl),' '
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _727a:		push	hl
-		ld	a,04fh
+		ld	a,80-1
 		sub	l
 		ld	c,a
-		ld	b,000h
-		call	_74ab
+		ld	b,0
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		inc	hl
 		call	_7427
 		dec	hl
-		ld	(hl),020h
+		ld	(hl),' '
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _7291:		push	hl
-		ld	a,017h
+		ld	a,24-1
 		sub	h
 		call	line_offset
 		ld	b,h
 		ld	c,l
-		ld	hl,0174fh
-		call	_74ab
+		ld	hl,(24-1)*256+(80-1)
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		ld	hl,0ffb0h
 		add	hl,de
 		call	_745d
 		pop	hl
-		ld	l,000h
-		ld	bc,00050h
-		call	_7173
-		jp	_712b
+		ld	l,0
+		ld	bc,80
+		call	erase_chars
+		jp	conout_done
 
 _72b5:		push	hl
-		ld	a,017h
+		ld	a,24-1
 		sub	h
 		push	hl
 		call	line_offset
 		ld	b,h
 		ld	c,l
 		pop	hl
-		ld	l,000h
-		call	_74ab
+		ld	l,0
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
-		ld	hl,00050h
+		ld	hl,80
 		add	hl,de
 		call	_7427
-		ld	hl,01700h
-		ld	bc,00050h
-		call	_7173
+		ld	hl,(24-1)*256
+		ld	bc,80
+		call	erase_chars
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
-_72db:		sub	020h
+conout_esc_y:	sub	020h
 		cp	018h
-		jp	nc,_712b
+		jp	nc,conout_done
 		ld	h,a
-		ld	(00072h),hl
+		ld	(cursor_xy),hl
 		ld	de,_72f0
-		ld	(00074h),de
-		jp	_7099
+		ld	(console_vec),de
+		jp	char_done
 
 _72f0:		sub	020h
 		cp	050h
-		jp	nc,_712b
+		jp	nc,conout_done
 		ld	l,a
-		ld	(00072h),hl
-		jp	_712b
+		ld	(cursor_xy),hl
+		jp	conout_done
 
-_72fe:		push	hl
-		ld	hl,00076h
-		cp	040h
-		jr	z,_731e
-		cp	044h
-		jr	z,_7322
-		cp	043h
+conout_esc_r:	push	hl
+		ld	hl,console_flags
+		cp	'@'
+		jr	z,inv_off
+		cp	'D'
+		jr	z,inv_on
+		cp	'C'
 		jr	z,_7326
-		cp	063h
+		cp	'c'
 		jr	z,_7334
-		cp	047h
+		cp	'G'
 		jr	z,_7346
-		cp	067h
+		cp	'g'
 		jr	z,_734a
-_731a:		pop	hl
-		jp	_712b
+cnd:		pop	hl
+		jp	conout_done
 
-_731e:		res	2,(hl)
-		jr	_731a
+inv_off:	res	2,(hl)		; clear inverse character mode
+		jr	cnd
 
-_7322:		set	2,(hl)
-		jr	_731a
+inv_on:		set	2,(hl)		; enter inverse character mode
+		jr	cnd
 
 _7326:		ld	a,(_7353)
 		ld	(_7350+1),a
 		ld	hl,_734e
 		call	_7890
-		jr	_731a
+		jr	cnd
 
 _7334:		ld	a,(_7353)
 		and	01fh
@@ -4268,46 +4291,46 @@ _7334:		ld	a,(_7353)
 		ld	(_7350+1),a
 		ld	hl,_734e
 		call	_7890
-		jr	_731a
+		jr	cnd
 
-_7346:		set	1,(hl)
-		jr	_731a
+_7346:		set	1,(hl)		; enter bit 1 mode
+		jr	cnd
 
-_734a:		res	1,(hl)
-		jr	_731a
+_734a:		res	1,(hl)		; clear bit 1 mode
+		jr	cnd
 
 _734e:		defb	0fch,00ah
 _7350:		defb	0fdh,069h
 		defb	000h
 _7353:		ld	l,c
-_7354:		cp	03fh
+conout_esc_std:	cp	'?'
 		jr	nz,_7361
 		ld	hl,_736d
-		ld	(00074h),hl
-		jp	_7099
+		ld	(console_vec),hl
+		jp	char_done
 
 _7361:		ld	(_73d0),a
 		ld	hl,_73c2
-		ld	(00074h),hl
-		jp	_7099
+		ld	(console_vec),hl
+		jp	char_done
 
-_736d:		cp	033h
-		jp	nz,_712b
+_736d:		cp	'3'
+		jp	nz,conout_done
 		ld	hl,_737b
-		ld	(00074h),hl
-		jp	_7099
+		ld	(console_vec),hl
+		jp	char_done
 
-_737b:		cp	033h
-		jp	nz,_712b
+_737b:		cp	'3'
+		jp	nz,conout_done
 		ld	hl,_7389
-		ld	(00074h),hl
-		jp	_7099
+		ld	(console_vec),hl
+		jp	char_done
 
-_7389:		cp	068h
+_7389:		cp	'h'
 		jr	z,_7394
-		cp	06ch
+		cp	'l'
 		jr	z,_73ac
-		jp	_712b
+		jp	conout_done
 
 _7394:		ld	a,(_7353)
 		and	01fh
@@ -4318,7 +4341,7 @@ _7394:		ld	a,(_7353)
 		ld	hl,_734e
 		call	_7890
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _73ac:		ld	a,(_7353)
 		and	01fh
@@ -4328,23 +4351,23 @@ _73ac:		ld	a,(_7353)
 		ld	hl,_734e
 		call	_7890
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _73c2:		cp	020h
-		jp	nz,_712b
+		jp	nz,conout_done
 		ld	hl,_73d1
-		ld	(00074h),hl
-		jp	_7099
+		ld	(console_vec),hl
+		jp	char_done
 
 _73d0:		ld	e,a
 _73d1:		cp	071h
-		jp	nz,_712b
+		jp	nz,conout_done
 		ld	a,(_73d0)
 		cp	05fh
 		jr	z,_73e4
 		cp	07fh
 		jr	z,_7401
-		jp	_712b
+		jp	conout_done
 
 _73e4:		ld	a,(_7353)
 		and	060h
@@ -4357,7 +4380,7 @@ _73e4:		ld	a,(_7353)
 		ld	hl,_741e
 		call	_7890
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _7401:		ld	a,(_7353)
 		and	060h
@@ -4370,7 +4393,7 @@ _7401:		ld	a,(_7353)
 		ld	hl,_741e
 		call	_7890
 		pop	hl
-		jp	_712b
+		jp	conout_done
 
 _741e:		defb	0fch,00ah
 _7420:		defb	0fdh,009h
@@ -4471,13 +4494,15 @@ _7488:		pop	hl
 		pop	hl
 		jr	_745d
 
-_7497:		push	bc
+; Convert HL = (X,Y) into VRAM offset in HL.
+
+xy2vram_off:	push	bc
 		ld	a,h
 		ld	c,l
-		ld	b,000h
+		ld	b,0
 		call	line_offset
 		add	hl,bc
-		ld	bc,(00070h)
+		ld	bc,(vram_pos)
 		add	hl,bc
 		ld	a,h
 		and	03fh
@@ -4485,7 +4510,9 @@ _7497:		push	bc
 		pop	bc
 		ret	
 
-_74ab:		call	_7497
+; Convert HL = (X,Y) into VRAM address in HL.
+
+xy2vram_addr:	call	xy2vram_off
 		ld	a,h
 		or	0f8h
 		ld	h,a
@@ -4507,10 +4534,12 @@ line_offset:	push	de
 		pop	de
 		ret	
 
-_74c2:		ld	a,i
+; Set the top left corner of the screen to start displaying at VRAM address HL.
+
+set_vram_pos:	ld	a,i
 		push	af
 		di	
-		ld	(00070h),hl
+		ld	(vram_pos),hl
 		ld	a,00ch
 		out	(0fch),a
 		ld	a,h
@@ -4525,20 +4554,20 @@ _74c2:		ld	a,i
 		ei	
 		ret	
 
-_74dd:		push	af
-		ld	hl,00000h
-		ld	(00070h),hl
-		ld	(00072h),hl
-		ld	hl,_709e
-		ld	(00074h),hl
+console_reset:	push	af
+		ld	hl,0
+		ld	(vram_pos),hl
+		ld	(cursor_xy),hl
+		ld	hl,conout_start
+		ld	(console_vec),hl
 		ld	a,000h
 		ld	(00120h),a
 		out	(0a0h),a
 		xor	a
-		ld	(00076h),a
+		ld	(console_flags),a
 		ld	hl,_750f
-		ld	b,010h
-_74fd:		ld	a,010h
+		ld	b,16
+_74fd:		ld	a,16
 		sub	b
 		out	(0fch),a
 		ld	a,(hl)
@@ -4566,6 +4595,7 @@ _750f:		defb	063h
 		defb	000h			
 		defb	000h			
 		defb	000h			
+
 ; Wait until a key is pressed and return scancode in A.
 ; (Apparently unused)
 waitkey:	call	havekey

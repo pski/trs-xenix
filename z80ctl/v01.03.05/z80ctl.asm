@@ -545,9 +545,8 @@ intrvec:	word	_6746
 		word	_5412
 		word	_5737
 		word	_68d6
-		word	0bbadh
-		word	0b4afh
-		word	0bdabh
+; Unreferenced data?
+		defb	0adh,0bbh,0afh,0b4h,0abh,0bdh
 _5488:		call	_76e8
 		ld	hl,_54da
 		ld	(002fdh),hl
@@ -572,20 +571,13 @@ _54b9:		ld	(iy+00h),000h
 		ld	hl,_54cb
 		jp	_7890
 
-_54cb:		defb	0efh			
-		defb	0ffh			
-		defb	0e4h			
-		defb	0d0h			
-		defb	0e2h			
-		defb	030h			
-		defb	0e2h			
-		defb	0cfh			
-		defb	0e2h			
-		defb	0f7h			
-		defb	0e2h			
-		defb	0b7h			
-		defb	0e2h			
-		defb	0feh			
+_54cb:		defb	0efh,0ffh
+		defb	0e4h,0d0h
+		defb	0e2h,030h
+		defb	0e2h,0cfh
+		defb	0e2h,0f7h
+		defb	0e2h,0b7h
+		defb	0e2h,0feh
 		defb	000h			
 _54da:		call	panic
 		ascii	10,13,'Unexpected floppy interrupt',0
@@ -1412,12 +1404,9 @@ _5c81:		ld	(iy+00h),000h
 		djnz	_5c81
 		ret	
 
-_5c8a:		defb	0c1h
-		defb	00eh
-		defb	0c4h
-		defb	028h
-		defb	0c4h
-		defb	003h
+_5c8a:		defb	0c1h,00eh
+		defb	0c4h,028h
+		defb	0c4h,003h
 		defb	000h
 _5c91:		ld	hl,_52f2
 		ld	a,(hl)
@@ -2318,209 +2307,120 @@ _657f:		dec	c
 		nop	
 		nop	
 		nop	
-_6583:		defb	0f0h
-		defb	020h
-		defb	0f3h
-		defb	0c7h
-		defb	0f3h
-		defb	001h
-		defb	079h
+_6583:		defb	0f0h,020h
+		defb	0f3h,0c7h
+		defb	0f3h,001h
+		defb	079h,000h
+		defb	079h,000h
+		defb	079h,000h
+		defb	079h,040h
+		defb	07bh,000h
+		defb	07bh,000h
+		defb	07bh,000h
+		defb	07bh,040h
+		defb	07dh,000h
+		defb	07dh,000h
+		defb	07dh,000h
+		defb	07dh,040h
+		defb	069h,000h
+		defb	069h,000h
+		defb	069h,000h
+		defb	069h,040h
+		defb	06bh,000h
+		defb	06bh,000h
+		defb	06bh,000h
+		defb	06bh,040h
+		defb	06dh,000h
+		defb	06dh,000h
+		defb	06dh,000h
+		defb	06dh,040h
+		defb	073h,036h
+		defb	070h,00dh
+		defb	070h,000h
+		defb	073h,076h
+		defb	071h,00dh
+		defb	071h,000h
+		defb	073h,0b6h
+		defb	072h,00dh
+		defb	072h,000h
+		defb	063h,036h
+		defb	060h,00dh
+		defb	060h,000h
+		defb	063h,076h
+		defb	061h,00dh
+		defb	061h,000h
+		defb	063h,0b6h
+		defb	062h,00dh
+		defb	062h,000h
+		defb	074h,000h
+		defb	064h,008h
+		defb	074h,0c5h
+		defb	074h,001h
+		defb	075h,0c5h
+		defb	075h,001h
+		defb	076h,0c5h
+		defb	076h,001h
+		defb	064h,0c5h
+		defb	064h,001h
+		defb	065h,0c5h
+		defb	065h,001h
+		defb	066h,0c5h
+		defb	066h,001h
+		defb	077h,047h
+		defb	067h,047h
+		defb	079h,04eh
+		defb	079h,037h
+		defb	078h,000h
+		defb	079h,036h
+		defb	07bh,04eh
+		defb	07bh,037h
+		defb	07ah,000h
+		defb	07bh,036h
+		defb	07dh,04eh
+		defb	07dh,037h
+		defb	07ch,000h
+		defb	07dh,036h
+		defb	069h,04eh
+		defb	069h,037h
+		defb	068h,000h
+		defb	069h,036h
+		defb	06bh,04eh
+		defb	06bh,037h
+		defb	06ah,000h
+		defb	06bh,036h
+		defb	06dh,04eh
+		defb	06dh,037h
+		defb	06ch,000h
+		defb	06dh,036h
+		defb	0e3h,032h
+		defb	0e3h,00fh
+		defb	0e3h,007h
+		defb	0e0h,000h
+		defb	0e0h,008h
+		defb	0e0h,000h
 		defb	000h
-		ld	a,c
-		nop	
-		ld	a,c
-		nop	
-		ld	a,c
-		ld	b,b
-		ld	a,e
-		nop	
-		ld	a,e
-		nop	
-		ld	a,e
-		nop	
-		ld	a,e
-		ld	b,b
-		ld	a,l
-		nop	
-		ld	a,l
-		nop	
-		ld	a,l
-		nop	
-		ld	a,l
-		ld	b,b
-		ld	l,c
-		nop	
-		ld	l,c
-		nop	
-		ld	l,c
-		nop	
-		ld	l,c
-		ld	b,b
-		ld	l,e
-		nop	
-		ld	l,e
-		nop	
-		ld	l,e
-		nop	
-		ld	l,e
-		ld	b,b
-		ld	l,l
-		nop	
-		ld	l,l
-		nop	
-		ld	l,l
-		nop	
-		ld	l,l
-		ld	b,b
-		ld	(hl),e
-		ld	(hl),070h
-		dec	c
-		ld	(hl),b
-		nop	
-		ld	(hl),e
-		halt	
-		ld	(hl),c
-		dec	c
-		ld	(hl),c
-		nop	
-		ld	(hl),e
-		or	(hl)
-		ld	(hl),d
-		dec	c
-		ld	(hl),d
-		nop	
-		ld	h,e
-		ld	(hl),060h
-		dec	c
-		ld	h,b
-		nop	
-		ld	h,e
-		halt	
-		ld	h,c
-		dec	c
-		ld	h,c
-		nop	
-		ld	h,e
-		or	(hl)
-		ld	h,d
-		dec	c
-		ld	h,d
-		nop	
-		ld	(hl),h
-		nop	
-		ld	h,h
-		ex	af,af'
-		ld	(hl),h
-		push	bc
-		ld	(hl),h
-		ld	bc,0c575h
-		ld	(hl),l
-		ld	bc,0c576h
-		halt	
-		ld	bc,0c564h
-		ld	h,h
-		ld	bc,0c565h
-		ld	h,l
-		ld	bc,0c566h
-		ld	h,(hl)
-		ld	bc,04777h
-		ld	h,a
-		ld	b,a
-		ld	a,c
-		ld	c,(hl)
-		ld	a,c
-		scf	
-		ld	a,b
-		nop	
-		ld	a,c
-		ld	(hl),07bh
-		ld	c,(hl)
-		ld	a,e
-		scf	
-		ld	a,d
-		nop	
-		ld	a,e
-		ld	(hl),07dh
-		ld	c,(hl)
-		ld	a,l
-		scf	
-		ld	a,h
-		nop	
-		ld	a,l
-		ld	(hl),069h
-		ld	c,(hl)
-		ld	l,c
-		scf	
-		ld	l,b
-		nop	
-		ld	l,c
-		ld	(hl),06bh
-		ld	c,(hl)
-		ld	l,e
-		scf	
-		ld	l,d
-		nop	
-		ld	l,e
-		ld	(hl),06dh
-		ld	c,(hl)
-		ld	l,l
-		scf	
-		ld	l,h
-		nop	
-		ld	l,l
-		ld	(hl),0e3h
-		ld	(00fe3h),a
-		ex	(sp),hl
-		rlca	
-		ret	po
-		nop	
-		ret	po
-		ex	af,af'
-		ret	po
-		nop	
-		nop	
-_663a:		defb	0f6h
-		defb	018h
-		defb	0f6h
-		defb	004h
-		defb	0f6h
-		defb	044h
-		defb	0f6h
-		defb	005h
-		defb	0f6h
-		defb	068h
-		defb	0f6h
-		defb	001h
-		defb	0f6h
-		defb	017h
-		defb	0f6h
-		defb	003h
-		defb	0f6h
-		defb	0c1h
+_663a:		defb	0f6h,018h
+		defb	0f6h,004h
+		defb	0f6h,044h
+		defb	0f6h,005h
+		defb	0f6h,068h
+		defb	0f6h,001h
+		defb	0f6h,017h
+		defb	0f6h,003h
+		defb	0f6h,0c1h
 		defb	000h
 		nop	
-_664e:		defb	0f7h
-		defb	018h
-		defb	0f7h
-		defb	004h
-		defb	0f7h
-		defb	044h
-		defb	0f7h
-		defb	005h
-		defb	0f7h
-		defb	068h
-		defb	0f7h
-		defb	001h
-		defb	0f7h
-		defb	017h
-		defb	0f7h
-		defb	003h
-		defb	0f7h
-		defb	0c1h
-		defb	0f7h
-		defb	002h
-		defb	0f7h
-		defb	010h
+_664e:		defb	0f7h,018h
+		defb	0f7h,004h
+		defb	0f7h,044h
+		defb	0f7h,005h
+		defb	0f7h,068h
+		defb	0f7h,001h
+		defb	0f7h,017h
+		defb	0f7h,003h
+		defb	0f7h,0c1h
+		defb	0f7h,002h
+		defb	0f7h,010h
 		defb	000h
 		nop	
 _6666:		push	af
@@ -4238,7 +4138,7 @@ _7245:		ld	a,l
 		ld	a,017h
 		sub	h
 		push	hl
-		call	lineaddr
+		call	line_offset
 		add	hl,de
 		ld	b,h
 		ld	c,l
@@ -4280,7 +4180,7 @@ _727a:		push	hl
 _7291:		push	hl
 		ld	a,017h
 		sub	h
-		call	lineaddr
+		call	line_offset
 		ld	b,h
 		ld	c,l
 		ld	hl,0174fh
@@ -4300,7 +4200,7 @@ _72b5:		push	hl
 		ld	a,017h
 		sub	h
 		push	hl
-		call	lineaddr
+		call	line_offset
 		ld	b,h
 		ld	c,l
 		pop	hl
@@ -4357,7 +4257,7 @@ _7322:		set	2,(hl)
 		jr	_731a
 
 _7326:		ld	a,(_7353)
-		ld	(_7351),a
+		ld	(_7350+1),a
 		ld	hl,_734e
 		call	_7890
 		jr	_731a
@@ -4365,7 +4265,7 @@ _7326:		ld	a,(_7353)
 _7334:		ld	a,(_7353)
 		and	01fh
 		or	020h
-		ld	(_7351),a
+		ld	(_7350+1),a
 		ld	hl,_734e
 		call	_7890
 		jr	_731a
@@ -4376,10 +4276,8 @@ _7346:		set	1,(hl)
 _734a:		res	1,(hl)
 		jr	_731a
 
-_734e:		defb	0fch
-		defb	00ah
-		defb	0fdh
-_7351:		defb	069h
+_734e:		defb	0fch,00ah
+_7350:		defb	0fdh,069h
 		defb	000h
 _7353:		ld	l,c
 _7354:		cp	03fh
@@ -4415,7 +4313,7 @@ _7394:		ld	a,(_7353)
 		and	01fh
 		or	060h
 		ld	(_7353),a
-		ld	(_7351),a
+		ld	(_7350+1),a
 		push	hl
 		ld	hl,_734e
 		call	_7890
@@ -4425,7 +4323,7 @@ _7394:		ld	a,(_7353)
 _73ac:		ld	a,(_7353)
 		and	01fh
 		ld	(_7353),a
-		ld	(_7351),a
+		ld	(_7350+1),a
 		push	hl
 		ld	hl,_734e
 		call	_7890
@@ -4452,9 +4350,9 @@ _73e4:		ld	a,(_7353)
 		and	060h
 		or	009h
 		ld	(_7353),a
-		ld	(_7421),a
+		ld	(_7420+1),a
 		ld	a,009h
-		ld	(_7425),a
+		ld	(_7424+1),a
 		push	hl
 		ld	hl,_741e
 		call	_7890
@@ -4465,23 +4363,19 @@ _7401:		ld	a,(_7353)
 		and	060h
 		or	001h
 		ld	(_7353),a
-		ld	(_7421),a
+		ld	(_7420+1),a
 		ld	a,008h
-		ld	(_7425),a
+		ld	(_7424+1),a
 		push	hl
 		ld	hl,_741e
 		call	_7890
 		pop	hl
 		jp	_712b
 
-_741e:		defb	0fch
-		defb	00ah
-		defb	0fdh
-_7421:		defb	009h
-		defb	0fch
-		defb	00bh
-		defb	0fdh
-_7425:		defb	009h
+_741e:		defb	0fch,00ah
+_7420:		defb	0fdh,009h
+		defb	0fch,00bh
+_7424:		defb	0fdh,009h
 		defb	000h
 _7427:		ld	a,b
 		or	c
@@ -4581,7 +4475,7 @@ _7497:		push	bc
 		ld	a,h
 		ld	c,l
 		ld	b,000h
-		call	lineaddr
+		call	line_offset
 		add	hl,bc
 		ld	bc,(00070h)
 		add	hl,bc
@@ -4598,7 +4492,7 @@ _74ab:		call	_7497
 		ret	
 
 ; Return HL = A * 80 (i.e., offset to line A of video display).
-lineaddr:	push	de
+line_offset:	push	de
 		add	a,a
 		add	a,a
 		add	a,a

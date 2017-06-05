@@ -37,6 +37,12 @@ console_flags:	defs	1	; output flags (guessing inverse mode, etc)
 	; bit 1 - characters ^ and up output as byte 0, 1, 2, ...
 	; bit 2 - output inverse characters if set
 
+; $80 .. $17f is shadow copies of data send to I/O ports 0 .. $ff.
+; However, the shadow copies are not always updated.  Probably only when
+; single bits may need to be changed.
+
+; Interrupt mode 2 is used and the interrupt vector table is at $7A00.
+
 video_RAM	equ	$f800
 
 ; console_vec changes though various conout_* routines to track the current
@@ -551,7 +557,7 @@ intrvec:	word	_6746
 		word	_5412
 		word	_5338
 		word	_5412
-		word	_6896
+		word	key_intr
 		word	_5f44
 		word	_5412
 		word	_5412
@@ -2038,7 +2044,7 @@ _631b:		push	iy
 		ld	de,00052h
 		add	hl,de
 		push	hl
-		ld	bc,_68c6+2
+		ld	bc,$68c8
 		inir	
 		pop	hl
 		call	_63b7
@@ -2305,7 +2311,7 @@ _6564:		ld	bc,0000ah
 		ldir	
 		dec	a
 		jr	nz,_6564
-		ld	hl,(_6e9c)
+		ld	hl,(keydcb)
 		ld	de,00009h
 		add	hl,de
 		ld	(hl),007h
@@ -2696,60 +2702,79 @@ _6832:		ld	a,b
 		out	(c),b
 		ret	
 
-_6844:		ld	e,a
-		bit	7,a
-		jr	z,_685d
-		sub	0a1h
-		cp	006h
-		ld	hl,_688e
-		jr	c,_6870
-		sub	01eh
-		cp	002h
-		ld	hl,_6894
-		jr	c,_6870
-		jr	_6875
+; Convert keyboard scancode into a character to input.
 
-_685d:		or	a
-		jr	z,_687b
-		sub	01ch
+scan2char:	ld	e,a
+		bit	7,a
+		jr	z,scanlow
+		sub	0a1h		; ctl-1 scancode
+		cp	6
+		ld	hl,_688e
+		jr	c,xlate_scan
+		sub	01eh		; ctl-? scancode
+		cp	2
+		ld	hl,_6894
+		jr	c,xlate_scan
+		jr	retkey
+
+scanlow:	or	a
+		jr	z,hold_key
+		sub	01ch		; left-arrow scancode
 		cp	004h
-		jr	nc,_6875
+		jr	nc,retkey
 		push	af
-		ld	a,01bh
+		ld	a,01bh		; Send ESC character
 		call	_6947
 		pop	af
-		ld	hl,_688a
-_6870:		ld	e,a
-		ld	d,000h
+		ld	hl,arrow_esc	; and then the translated arrow key
+xlate_scan:	ld	e,a
+		ld	d,0
 		add	hl,de
 		ld	e,(hl)
-_6875:		xor	a
-		ld	(_6889),a
+retkey:		xor	a
+		ld	(hold),a
 		ld	a,e
 		ret	
 
-_687b:		ld	a,(_6889)
+; "HOLD" key alternates between outputting ctrl-S and ctrl-Q, the standard
+; flow control characters.
+
+hold_key:	ld	a,(hold)
 		cpl	
-		ld	(_6889),a
+		ld	(hold),a
 		or	a
-		ld	a,011h
+		ld	a,011h		; ctrl-S
 		ret	z
-		ld	a,013h
+		ld	a,013h		; ctrl-Q
 		ret	
 
-_6889:		nop	
-_688a:		ld	b,h
-		ld	b,e
-		ld	b,c
-		ld	b,d
-_688e:		ld	a,h
-		ld	h,b
-		dec	e
-		ld	e,01fh
-		inc	e
-_6894:		ld	e,h
-		nop	
-_6896:		push	af
+hold:		byte	0	
+
+; Translate arrow key scancodes $1C .. $1F (left, right, up, down)
+
+arrow_esc:	byte	'D'
+		byte	'C'
+		byte	'A'
+		byte	'B'
+
+; Translation table for scancodes $A1 .. $A6
+; Which are: ctl-1 ctl-" ctl-3 ctl-4 ctl-5 ctl-7
+
+_688e:		byte	'|'
+		byte	'`'
+		byte	$1d
+		byte	$1e
+		byte	$1f
+		byte	$1c
+
+; Translation table for scancodes $BF, $C0 (ctl-?, ctl-2)
+
+_6894:		byte	'\'
+		byte	0
+
+; Handle keyboard interrupt
+
+key_intr:	push	af
 		push	bc
 		push	de
 		push	hl
@@ -2763,18 +2788,18 @@ _6896:		push	af
 		call	_76e8
 		in	a,(0ffh)
 		and	080h
-		jr	z,_68be
-		in	a,(0fch)
-		ld	ix,(_6e9c)
-		ld	b,000h
-		call	_6844
+		jr	z,nokey
+		in	a,(0fch)		; read keyboard scancode
+		ld	ix,(keydcb)
+		ld	b,0
+		call	scan2char
 		call	_6947
-_68be:		pop	de
+nokey:		pop	de
 		ld	a,d
 		ld	(0015fh),a
 		out	(0dfh),a
 		ld	a,e
-_68c6:		ld	(0015eh),a
+		ld	(0015eh),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -3649,8 +3674,7 @@ _6e83:		defb	000h
 		defb	000h			
 _6e9a:		defb	0b4h			
 		defb	06dh			
-_6e9c:		defb	050h			
-		defb	000h			
+keydcb:		word	$0050		; device control block? for keyboard
 		defb	0cbh			
 		defb	06dh			
 _6ea0:		defb	05ah			
@@ -3736,7 +3760,7 @@ _6eea:		ld	a,(_6db9)
 		dec	a
 		ld	(017c1h),a
 		call	_76e8
-		ld	ix,(_6e9c)
+		ld	ix,(keydcb)
 		ld	iy,_6db4
 		ld	b,005h
 		ld	a,(_6db9)

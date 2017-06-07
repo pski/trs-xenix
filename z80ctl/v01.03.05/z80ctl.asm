@@ -22,8 +22,7 @@
 ; Current status:
 ;	Not all data areas have been identified.
 ;	Much information from the Anonymous disassembly to import.
-;	Not likely to work if any changes are made -- I think there are
-;		addresses in data sections that need to be symbols.
+;	I think it will now work if reassembled with changes.
 
 ; This initial chunk appears to be some kind of header.  I'm not entirely
 ; certain if the execution and load addresses are little or big endian.
@@ -301,6 +300,7 @@ _523f:		word	_5278
 		word	_5269
 		word	_526e
 		word	_5273
+
 _5269:		ld	hl,_52f5
 		inc	(hl)
 		ret	
@@ -410,6 +410,7 @@ _530a:		nop
 		nop	
 		nop	
 		nop	
+
 _5314:		call	_76e8
 		ld	de,(00191h)
 		ld	hl,00180h
@@ -512,7 +513,7 @@ _53f7:		call	_53a8
 _540e:		halt	
 		jr	_540e
 
-		ret	
+_5411:		ret	
 
 _5412:		call	panic
 		ascii	'Unknown z80 interrupt.',0
@@ -566,6 +567,7 @@ intrvec:	word	_6746
 		word	_68d6
 ; Unreferenced data?
 		defb	0adh,0bbh,0afh,0b4h,0abh,0bdh
+
 _5488:		call	_76e8
 		ld	hl,_54da
 		ld	(002fdh),hl
@@ -598,6 +600,7 @@ _54cb:		defb	0efh,0ffh
 		defb	0e2h,0b7h
 		defb	0e2h,0feh
 		defb	000h			
+
 _54da:		call	panic
 		ascii	10,13,'Unexpected floppy interrupt',0
 _54fb:		jr	_54fb
@@ -2867,7 +2870,7 @@ _6923:		ld	c,(iy+07h)
 		out	(c),a
 		ret	
 
-		ld	c,(iy+07h)
+_6937:		ld	c,(iy+07h)
 		ld	b,000h
 		ld	hl,00080h
 		add	hl,bc
@@ -3072,7 +3075,7 @@ _6b0a:		pop	hl
 		pop	bc
 		ret	
 
-		push	bc
+_6b0e:		push	bc
 		push	de
 		push	hl
 		ld	l,(iy+0ch)
@@ -3256,7 +3259,8 @@ _6c31:		nop
 		nop	
 		nop	
 		nop	
-		push	bc
+
+_6c51:		push	bc
 		push	de
 		push	hl
 		ld	l,(iy+0ch)
@@ -3410,16 +3414,21 @@ _6d48:		word	00000h
 		word	0000dh
 		word	00000h
 		word	00000h
+
 _6d68:		defb	073h,036h,070h
 		defb	073h,076h,071h
 		defb	073h,0b6h,072h
 		defb	063h,036h,060h
 		defb	063h,076h,061h
 		defb	063h,0b6h,062h
-		defb	03ah,0b9h,06dh
-		defb	0b7h,0c8h,0cdh
-		defb	0c9h,069h,0c4h
-		defb	080h,070h,0c9h
+
+_6d7a:		ld	a,(_6db9)
+		or	a
+		ret	z
+		call	_69c9
+		call	nz,putc
+		ret
+
 _6d86:		ld	iy,_6df9
 		ld	a,(iy+00h)
 		or	a
@@ -3460,10 +3469,10 @@ _6db9:		defb	000h
 		defb	000h			
 		defb	0c1h			
 		defb	002h			
-		defb	07ah			
-		defb	06dh			
-		defb	011h			
-		defb	054h			
+
+		word	_6d7a
+		word	_5411
+
 		defb	000h			
 _6dcb:		defb	000h			
 		defb	000h			
@@ -3483,10 +3492,10 @@ _6dcb:		defb	000h
 		defb	000h			
 		defb	0a1h			
 		defb	001h			
-		defb	023h			
-		defb	069h			
-		defb	00eh			
-		defb	06bh			
+
+		word	_6923
+		word	_6b0e
+
 		defb	000h			
 _6de2:		defb	000h			
 		defb	000h			
@@ -3506,11 +3515,12 @@ _6de2:		defb	000h
 		defb	000h			
 		defb	0c1h			
 		defb	001h			
-		defb	023h			
-		defb	069h			
-		defb	00eh			
-		defb	06bh			
+
+		word	_6923
+		word	_6b0e
+
 		defb	000h			
+
 _6df9:		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -3529,10 +3539,10 @@ _6df9:		defb	000h
 		defb	000h			
 		defb	0a1h			
 		defb	002h			
-		defb	011h			
-		defb	069h			
-		defb	011h			
-		defb	054h			
+
+		word	_6911
+		word	_5411
+
 		defb	000h			
 _6e10:		defb	000h			
 		defb	000h			
@@ -3552,10 +3562,10 @@ _6e10:		defb	000h
 		defb	000h			
 		defb	0e1h			
 		defb	001h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
 _6e27:		defb	000h			
 		defb	000h			
@@ -3575,10 +3585,10 @@ _6e27:		defb	000h
 		defb	000h			
 		defb	001h			
 		defb	002h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
 _6e3e:		defb	000h			
 		defb	000h			
@@ -3598,10 +3608,10 @@ _6e3e:		defb	000h
 		defb	000h			
 		defb	021h			
 		defb	002h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
 _6e55:		defb	000h			
 		defb	000h			
@@ -3621,10 +3631,10 @@ _6e55:		defb	000h
 		defb	000h			
 		defb	041h			
 		defb	002h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
 _6e6c:		defb	000h			
 		defb	000h			
@@ -3644,10 +3654,10 @@ _6e6c:		defb	000h
 		defb	000h			
 		defb	061h			
 		defb	002h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
 _6e83:		defb	000h			
 		defb	000h			
@@ -3667,49 +3677,42 @@ _6e83:		defb	000h
 		defb	000h			
 		defb	081h			
 		defb	002h			
-		defb	037h			
-		defb	069h			
-		defb	051h			
-		defb	06ch			
+
+		word	_6937
+		word	_6c51
+
 		defb	000h			
-_6e9a:		defb	0b4h			
-		defb	06dh			
+
+_6e9a:		word	_6db4
 keydcb:		word	$0050		; device control block? for keyboard
-		defb	0cbh			
-		defb	06dh			
-_6ea0:		defb	05ah			
-		defb	000h			
-		defb	0e2h			
-		defb	06dh			
-_6ea4:		defb	064h			
-		defb	000h			
-		defb	0f9h			
-		defb	06dh			
-_6ea8:		defb	06eh			
-		defb	000h			
-		defb	010h			
-		defb	06eh			
-_6eac:		defb	078h			
-		defb	000h			
-		defb	027h			
-		defb	06eh			
-_6eb0:		defb	082h			
-		defb	000h			
-		defb	03eh			
-		defb	06eh			
-_6eb4:		defb	08ch			
-		defb	000h			
-		defb	055h			
-		defb	06eh			
-_6eb8:		defb	096h			
-		defb	000h			
-		defb	06ch			
-		defb	06eh			
-_6ebc:		defb	0a0h			
-		defb	000h			
-		defb	083h			
-		defb	06eh			
-_6ec0:		defb	0aah			
+
+		word	_6dcb
+_6ea0:		word	$005a
+
+		word	_6de2
+_6ea4:		word	$0064
+
+		word	_6df9
+_6ea8:		word	$006e
+
+		word	_6e10
+_6eac:		word	$0078
+
+		word	_6e27
+_6eb0:		word	$0082
+
+		word	_6e3e
+_6eb4:		word	$008c
+
+		word	_6e55
+_6eb8:		word	$0096
+
+		word	_6e6c
+_6ebc:		word	$00a0
+
+		word	_6e83
+_6ec0:		word	$00aa
+
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -3750,7 +3753,7 @@ _6ec0:		defb	0aah
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	000h			
+
 _6eea:		ld	a,(_6db9)
 		or	a
 		ret	z

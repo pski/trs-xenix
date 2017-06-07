@@ -25,6 +25,13 @@
 ;	Not likely to work if any changes are made -- I think there are
 ;		addresses in data sections that need to be symbols.
 
+		org	$70
+vram_pos:	defs	2	; top left corner of screen in video RAM
+cursor_xy:	defs	2	; cursor XY position (high = Y, low = X)
+console_vec:	defs	2	; routine to handle next console output byte
+console_flags:	defs	1	; output flags (guessing inverse mode, etc)
+	; bit 1 - characters ^ and up output as byte 0, 1, 2, ...
+	; bit 2 - output inverse characters if set
 
 ; A 256 byte ring buffer that messages are put into they are
 ; displayed on the console.  See ring_putc
@@ -648,7 +655,8 @@ _43c9:		di
 		ascii	'Bughlt: Wnd7  Additional:',0
 		jp	z80dump
 
-		ret	
+_43fc:		ret	
+
 
 _43fd:		ei	
 		reti	
@@ -4807,7 +4815,7 @@ _6541:		ex	af,af'
 		ei	
 		reti	
 
-		ld	b,(iy+05h)
+_654c:		ld	b,(iy+05h)
 		ld	c,(iy+06h)
 _6552:		in	a,(c)
 		and	004h
@@ -5022,7 +5030,7 @@ _66d2:		ex	af,af'
 		ei	
 		reti	
 
-		in	a,(0e0h)
+_66d6:		in	a,(0e0h)
 		and	0e0h
 		ret	nz
 _66db:		ld	b,003h
@@ -5031,8 +5039,8 @@ _66db:		ld	b,003h
 		out	(0e1h),a
 		ret	
 
-		and	07fh
-		ld	c,(iy+06h)
+		and	07fh		; TODO!
+_66e6:		ld	c,(iy+06h)
 		ld	b,000h
 		ld	hl,00080h
 		add	hl,bc
@@ -5309,7 +5317,7 @@ _68b0:		ld	a,c
 		ld	h,(iy+0eh)
 		jp	(hl)
 
-		ld	e,(ix+07h)
+_68bd:		ld	e,(ix+07h)
 		ld	d,(ix+08h)
 		ld	l,(ix+06h)
 		ld	a,(iy+00h)
@@ -5515,7 +5523,7 @@ _6a38:		cp	(iy+02h)
 _6a4c:		pop	bc
 		ret	
 
-		ld	b,(ix+06h)
+_6a4e:		ld	b,(ix+06h)
 		ld	c,(ix+08h)
 		ld	e,(ix+07h)
 		ld	a,(iy+03h)
@@ -5673,7 +5681,8 @@ _6b4c:		defb	073h,036h,070h
 		defb	053h,036h,050h
 		defb	053h,076h,051h
 		defb	053h,0b6h,052h
-		ld	a,(_6b9c)
+
+_6b67:		ld	a,(_6b9c)
 		or	a
 		ret	z
 		ld	b,000h
@@ -5701,6 +5710,8 @@ _6b8c:		ld	a,(0015eh)
 		out	(0deh),a
 		ret	
 
+; as in 1.3.5 version there are bunches of addresses here...
+
 _6b98:		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -5712,10 +5723,10 @@ _6b9c:		defb	000h
 		defb	000h			
 		defb	018h			
 		defb	003h			
-		defb	067h			
-		defb	06bh			
-		defb	0fch			
-		defb	043h			
+
+		word	_6b67
+		word	_43fc
+
 _6ba7:		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -5727,10 +5738,10 @@ _6ba7:		defb	000h
 		defb	000h			
 		defb	098h			
 		defb	001h			
-		defb	04ch			
-		defb	065h			
-		defb	0bdh			
-		defb	068h			
+
+		word	_654c
+		word	_68bd
+
 		defb	000h			
 _6bb7:		defb	000h			
 		defb	000h			
@@ -5743,10 +5754,10 @@ _6bb7:		defb	000h
 		defb	000h			
 		defb	0b8h			
 		defb	001h			
-		defb	04ch			
-		defb	065h			
-		defb	0bdh			
-		defb	068h			
+
+		word	_654c
+		word	_68bd
+
 		defb	000h			
 _6bc7:		defb	000h			
 		defb	000h			
@@ -5759,10 +5770,10 @@ _6bcb:		defb	000h
 		defb	000h			
 		defb	0f8h			
 		defb	002h			
-		defb	0d6h			
-		defb	066h			
-		defb	0fch			
-		defb	043h			
+
+		word	_66d6
+		word	_43fc
+
 		defb	000h			
 _6bd7:		defb	000h			
 		defb	000h			
@@ -5775,10 +5786,10 @@ _6bd7:		defb	000h
 		defb	000h			
 		defb	0d8h			
 		defb	001h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6be7:		defb	000h			
 		defb	000h			
@@ -5791,10 +5802,10 @@ _6be7:		defb	000h
 		defb	000h			
 		defb	0f8h			
 		defb	001h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6bf7:		defb	000h			
 		defb	000h			
@@ -5807,10 +5818,10 @@ _6bf7:		defb	000h
 		defb	000h			
 		defb	018h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c07:		defb	000h			
 		defb	000h			
@@ -5823,10 +5834,10 @@ _6c07:		defb	000h
 		defb	000h			
 		defb	038h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c17:		defb	000h			
 		defb	000h			
@@ -5839,10 +5850,10 @@ _6c17:		defb	000h
 		defb	000h			
 		defb	058h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c27:		defb	000h			
 		defb	000h			
@@ -5855,10 +5866,10 @@ _6c27:		defb	000h
 		defb	000h			
 		defb	078h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c37:		defb	000h			
 		defb	000h			
@@ -5871,10 +5882,10 @@ _6c37:		defb	000h
 		defb	000h			
 		defb	098h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c47:		defb	000h			
 		defb	000h			
@@ -5887,10 +5898,10 @@ _6c47:		defb	000h
 		defb	000h			
 		defb	0b8h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c57:		defb	000h			
 		defb	000h			
@@ -5903,59 +5914,83 @@ _6c57:		defb	000h
 		defb	000h			
 		defb	0d8h			
 		defb	002h			
-		defb	0e6h			
-		defb	066h			
-		defb	04eh			
-		defb	06ah			
+
+		word	_66e6
+		word	_6a4e
+
 		defb	000h			
 _6c67:		defb	000h,000h,000h,000h,000h,000h,000h,000h,000h,000h,000h,000h
 _6c73:		defb	000h,001h
+
 _6c75:		word	_6b98
-_6c77:		defb	0e6h,002h
+_6c77:		word	$02e6
+
 		word	_6ba7
-		defb	0f0h,002h
+		word	$2f0
+
 		word	_6bb7
-		defb	0fah,002h
+		word	$2fa
+
 		word	_6bc7
-		defb	004h,003h
+		word	$304
+
 _6c85:		word	_6bd7
-		defb	00eh,003h
+		word	$30e
+
 		word	_6be7
-		defb	018h,003h
+		word	$318
+
 		word	_6bf7
-		defb	022h,003h
+		word	$322
+
 		word	_6c07
-		defb	02ch,003h
+		word	$32c
+
 		word	_6c17
-		defb	036h,003h
+		word	$336
+
 		word	_6c27
-		defb	040h,003h
+		word	$340
+
 		word	_6c37
-		defb	04ah,003h
+		word	$34a
+
 		word	_6c47
-		defb	054h,003h
+		word	$354
+
 		word	_6c57
-		defb	05eh,003h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
-		word	00000h
-		defb	000h,000h
+		word	$35e
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
+		word	0
+		word	0
+
 _6cd1:		ld	a,(_6b9c)
 		or	a
 		ret	z
@@ -6072,7 +6107,7 @@ _6dc0:		call	panic
 		ascii	'SRBADDR',13,10,0
 _6dcd:		call	panic
 		ascii	'SRXCSR',13,10,0
-_6dd9:		ld	hl,(00070h)
+_6dd9:		ld	hl,(vram_pos)
 		ld	a,h
 		or	0f8h
 		ld	h,a
@@ -6096,6 +6131,7 @@ _6e03:		defb	000h
 _6e04:		word	00000h
 _6e06:		word	00000h
 _6e08:		word	00000h
+
 _6e0a:		call	_6ef8
 		ld	a,(_6e03)
 		cp	000h
@@ -6278,14 +6314,15 @@ _6f53:		nop
 _6f55:		nop	
 _6f56:		nop	
 		nop	
+
 _6f58:		ld	ix,00058h
 		ld	de,(00186h)
 		add	ix,de
 		ld	(00196h),ix
-		ld	hl,_6fd9
-		ld	(00074h),hl
+		ld	hl,conout_start
+		ld	(console_vec),hl
 		xor	a
-		ld	(00076h),a
+		ld	(console_flags),a
 		ld	a,000h
 		ld	(00120h),a
 		out	(0a0h),a
@@ -6310,17 +6347,20 @@ putc:		push	af
 		push	de
 		push	hl
 		and	07fh
-		ld	hl,(00074h)
+		ld	hl,(console_vec)
 		push	hl
-		ld	hl,(00072h)
+		ld	hl,(cursor_xy)
 		ret	
 
 _6f99:		push	af
 		jr	_6fa5
 
-_6f9c:		ld	hl,_6fd9
-_6f9f:		ld	(00074h),hl
-_6fa2:		pop	hl
+; Called when the character output handling is complete and the we are to
+; start from the beginning scanning for escape codes.
+
+char_restart:	ld	hl,conout_start
+char_done:	ld	(console_vec),hl
+char_done_noxy:	pop	hl
 		pop	de
 		pop	bc
 _6fa5:		ld	a,(_6fd6)
@@ -6332,6 +6372,9 @@ _6faf:		ld	a,(_6fd7)
 		ld	(_6fd6),a
 		pop	af
 		ret	
+
+; I daresay this has something to do with cursor blink, just because of
+; the 60 counter there.
 
 _6fb7:		ld	hl,_6fd4
 		ld	a,(hl)
@@ -6361,56 +6404,57 @@ _6fd4:		defb	001h
 _6fd6:		defb	014h
 _6fd7:		defb	014h
 ring_head:	defb	000h
-_6fd9:		cp	020h
-		jp	nc,_7037
-		cp	00dh
-		jp	z,_700b
-		cp	00ah
-		jp	z,_706e
-		cp	009h
-		jr	z,_7010
-		cp	008h
-		jr	z,_7004
-		cp	00ch
+
+conout_start:	cp	' '
+		jp	nc,char_normal
+		cp	13
+		jp	z,char_cr
+		cp	10
+		jp	z,char_lf
+		cp	9
+		jr	z,char_tab
+		cp	8
+		jr	z,char_bs
+		cp	12
 		jp	z,cls
-		cp	007h
-		jr	z,_7018
+		cp	7
+		jr	z,char_bell
 		cp	01bh
-		jp	nz,_6fa2
-		ld	hl,_7110
-		jp	_6f9f
+		jp	nz,char_done_noxy
+		ld	hl,conout_esc
+		jp	char_done
 
-_7004:		dec	l
+char_bs:	dec	l
 		jp	p,_7090
-		jp	_6fa2
+		jp	char_done_noxy
 
-_700b:		ld	l,000h
+char_cr:	ld	l,0
 		jp	_7090
 
-_7010:		ld	a,l
-		or	007h
+char_tab:	ld	a,l
+		or	7
 		inc	a
 		ld	l,a
 		jp	_7067
 
-_7018:		ld	a,(00120h)
+char_bell:	ld	a,(00120h)
 		and	001h
-		jp	nz,_6fa2
+		jp	nz,char_done_noxy
 		ld	a,001h
 		ld	(00120h),a
 		out	(0a0h),a
 		ld	a,008h
 		ld	(00184h),a
-_702c:		jp	_6fa2
+_702c:		jp	char_done_noxy
 
 _702f:		ld	a,000h
 		ld	(00120h),a
 		out	(0a0h),a
 		ret	
 
-_7037:		ld	b,a
-		call	_7450
-		ld	a,(00076h)
+char_normal:	ld	b,a
+		call	xy2vram_addr
+		ld	a,(console_flags)
 		bit	1,a
 		jp	z,_7050
 		ld	a,b
@@ -6419,40 +6463,40 @@ _7037:		ld	b,a
 		dec	a
 		and	07fh
 		ld	b,a
-_704d:		ld	a,(00076h)
+_704d:		ld	a,(console_flags)
 _7050:		bit	2,a
 		jp	z,_7057
 		set	7,b
 _7057:		ld	(hl),b
-		ld	hl,(00072h)
+		ld	hl,(cursor_xy)
 		inc	l
 		jp	_7066
 
-_705f:		ld	de,_6fd9
-		ld	(00074h),de
+conout_done:	ld	de,conout_start
+		ld	(console_vec),de
 _7066:		ld	a,l
 _7067:		cp	050h
 		jp	c,_706f
 		ld	l,000h
-_706e:		inc	h
+char_lf:	inc	h
 _706f:		ld	a,h
 		cp	018h
 		jp	c,_7090
 		ld	h,017h
 		push	hl
-		ld	hl,(00070h)
+		ld	hl,(vram_pos)
 		ld	de,00050h
 		add	hl,de
 		ld	a,h
 		and	03fh
 		ld	h,a
-		call	_7466
+		call	set_vram_pos
 		ld	hl,01700h
 		ld	bc,00050h
 		call	_70aa
 		pop	hl
-_7090:		ld	(00072h),hl
-		call	_743e
+_7090:		ld	(cursor_xy),hl
+		call	xy2vram_off
 		ld	a,00eh
 		ld	c,0fdh
 		out	(0fch),a
@@ -6460,14 +6504,14 @@ _7090:		ld	(00072h),hl
 		ld	a,00fh
 		out	(0fch),a
 		out	(c),l
-		jp	_6fa2
+		jp	char_done_noxy
 
 _70a7:		ld	a,b
 		or	c
 		ret	z
 _70aa:		push	de
 		push	hl
-		call	_7450
+		call	xy2vram_addr
 		push	hl
 		xor	a
 		adc	hl,bc
@@ -6491,7 +6535,7 @@ _70c5:		push	hl
 		ld	b,h
 		ld	c,l
 		ld	hl,video_RAM
-		ld	(hl),020h
+		ld	(hl),' '
 		jr	z,_70da
 		dec	bc
 		ld	a,b
@@ -6524,26 +6568,26 @@ _70f0:		pop	hl
 
 ; Clear console and home cursor.
 cls:		ld	hl,video_RAM
-		ld	de,0f801h
-		ld	bc,0077fh
-		ld	(hl),020h
+		ld	de,video_RAM+1
+		ld	bc,24*80-1
+		ld	(hl),' '
 		ldir	
-		ld	hl,00000h
-		call	_7466
-		ld	de,_6fd9
-		ld	(00074h),de
+		ld	hl,0
+		call	set_vram_pos
+		ld	de,conout_start
+		ld	(console_vec),de
 		jp	_7090
 
-_7110:		sub	041h
-		cp	032h
-		jp	nc,_6f9c
+conout_esc:	sub	'A'
+		cp	50
+		jp	nc,char_restart
 		push	hl
-		ld	hl,_6fd9
-		ld	(00074h),hl
-		ld	hl,_712c
+		ld	hl,conout_start
+		ld	(console_vec),hl
+		ld	hl,escape_codes
 		add	a,a
 		ld	c,a
-		ld	b,000h
+		ld	b,0
 		add	hl,bc
 		ld	a,(hl)
 		inc	hl
@@ -6552,98 +6596,101 @@ _7110:		sub	041h
 		ex	(sp),hl
 		ret	
 
-_712c:		word	_71a3
-		word	_71ac
-		word	_7199
-		word	_7190
-		word	cls
-		word	_6fa2
-		word	_6fa2
-		word	_71b6
-		word	_6fa2
-		word	_71da
-		word	_71ce
-		word	_7224
-		word	_7248
-		word	_6fa2
-		word	_6fa2
-		word	_71f8
-		word	_720f
-		word	_71c2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_71bc
-		word	_6fa2
-		word	_71c8
-		word	_6fa2
-		word	_6fa2
-		word	_726c
-		word	_7274
-		word	_7277
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-		word	_729a
-		word	_728d
-		word	_6fa2
-		word	_6fa2
-		word	_6fa2
-_7190:		ld	a,l
+; Version 3.2.0 has 50 escape codes slots where 1.3.5 had 27.
+
+escape_codes:	word	cursor_up	; esc-A
+		word	cursor_down	; esc-B
+		word	cursor_right	; esc-C
+		word	cursor_left	; esc-D
+		word	cls		; esc-E
+		word	char_done_noxy	; esc-F
+		word	char_done_noxy	; esc-G
+		word	_71b6		; esc-H
+		word	char_done_noxy	; esc-I
+		word	_71da		; esc-J
+		word	_71ce		; esc-K
+		word	_7224		; esc-L
+		word	_7248		; esc-M
+		word	char_done_noxy	; esc-N
+		word	char_done_noxy	; esc-O
+		word	_71f8		; esc-P
+		word	_720f		; esc-Q
+		word	esc_r		; esc-R
+		word	char_done_noxy	; esc-S
+		word	char_done_noxy	; esc-T
+		word	char_done_noxy	; esc-U
+		word	char_done_noxy	; esc-V
+		word	char_done_noxy	; esc-W
+		word	char_done_noxy	; esc-X
+		word	esc_y		; esc-Y
+		word	char_done_noxy	; esc-Z
+		word	esc_std		; esc-[
+		word	char_done_noxy	; esc-\
+		word	char_done_noxy	; esc-]
+		word	_726c		; esc-^
+		word	_7274		; esc-_
+		word	_7277		; esc-`
+		word	char_done_noxy	; esc-a
+		word	char_done_noxy	; esc-b
+		word	char_done_noxy	; esc-c
+		word	char_done_noxy	; esc-d
+		word	char_done_noxy	; esc-e
+		word	char_done_noxy	; esc-f
+		word	char_done_noxy	; esc-g
+		word	char_done_noxy	; esc-h
+		word	char_done_noxy	; esc-i
+		word	char_done_noxy	; esc-j
+		word	char_done_noxy	; esc-k
+		word	char_done_noxy	; esc-l
+		word	char_done_noxy	; esc-m
+		word	_729a		; esc-n
+		word	_728d		; esc-o
+		word	char_done_noxy	; esc-p
+		word	char_done_noxy	; esc-q
+		word	char_done_noxy	; esc-r
+
+cursor_left:	ld	a,l
 		or	a
-		jp	z,_6fa2
+		jp	z,char_done_noxy
 		dec	l
 		jp	_7090
 
-_7199:		ld	a,l
+cursor_right:	ld	a,l
 		cp	04fh
-		jp	z,_6fa2
+		jp	z,char_done_noxy
 		inc	l
 		jp	_7090
 
-_71a3:		ld	a,h
+cursor_up:	ld	a,h
 		or	a
-		jp	z,_6fa2
+		jp	z,char_done_noxy
 		dec	h
 		jp	_7090
 
-_71ac:		ld	a,h
+cursor_down:	ld	a,h
 		cp	017h
-		jp	z,_6fa2
+		jp	z,char_done_noxy
 		inc	h
 		jp	_7090
 
 _71b6:		ld	hl,00000h
 		jp	_7090
 
-_71bc:		ld	hl,_72a1
-		jp	_6f9f
+esc_y:		ld	hl,conout_esc_y
+		jp	char_done
 
-_71c2:		ld	hl,_72c0
-		jp	_6f9f
+esc_r:		ld	hl,conout_esc_r
+		jp	char_done
 
-_71c8:		ld	hl,_7316
-		jp	_6f9f
+esc_std:	ld	hl,conout_esc_std
+		jp	char_done
 
 _71ce:		ld	a,050h
 		sub	l
 		ld	c,a
 		ld	b,000h
 		call	nz,_70aa
-		jp	_6fa2
+		jp	char_done_noxy
 
 _71da:		ld	a,l
 		or	h
@@ -6663,34 +6710,34 @@ _71da:		ld	a,l
 		ld	c,l
 		pop	hl
 		call	_70a7
-		jp	_6fa2
+		jp	char_done_noxy
 
 _71f8:		ld	a,04fh
 		sub	l
 		ld	c,a
 		ld	b,000h
 		ld	l,04fh
-		call	_7450
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		dec	hl
 		call	_7404
 		inc	hl
-		ld	(hl),020h
-		jp	_6fa2
+		ld	(hl),' '
+		jp	char_done_noxy
 
 _720f:		ld	a,04fh
 		sub	l
 		ld	c,a
 		ld	b,000h
-		call	_7450
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		inc	hl
 		call	_73ce
 		dec	hl
-		ld	(hl),020h
-		jp	_6fa2
+		ld	(hl),' '
+		jp	char_done_noxy
 
 _7224:		push	hl
 		ld	a,017h
@@ -6699,7 +6746,7 @@ _7224:		push	hl
 		ld	b,h
 		ld	c,l
 		ld	hl,0174fh
-		call	_7450
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		ld	hl,0ffb0h
@@ -6719,7 +6766,7 @@ _7248:		ld	a,017h
 		ld	c,l
 		pop	hl
 		ld	l,000h
-		call	_7450
+		call	xy2vram_addr
 		ld	d,h
 		ld	e,l
 		ld	hl,00050h
@@ -6728,22 +6775,22 @@ _7248:		ld	a,017h
 		ld	hl,01700h
 		ld	bc,00050h
 		call	_70aa
-		jp	_6fa2
+		jp	char_done_noxy
 
 _726c:		ld	a,001h
 _726e:		ld	(_6fd4),a
-		jp	_6fa2
+		jp	char_done_noxy
 
 _7274:		xor	a
 		jr	_726e
 
 _7277:		ld	hl,_727d
-		jp	_6f9f
+		jp	char_done
 
-_727d:		ld	hl,_6fd9
-		ld	(00074h),hl
+_727d:		ld	hl,conout_start
+		ld	(console_vec),hl
 		sub	020h
-		jp	z,_6fa2
+		jp	z,char_done_noxy
 		ld	(_6fd7),a
 		jr	_726c
 
@@ -6751,43 +6798,43 @@ _728d:		ld	a,(_6f4d)
 		or	001h
 _7292:		ld	(_6f4d),a
 		out	(083h),a
-		jp	_6fa2
+		jp	char_done_noxy
 
 _729a:		ld	a,(_6f4d)
 		and	0feh
 		jr	_7292
 
-_72a1:		sub	020h
+conout_esc_y:	sub	020h
 		cp	018h
-		jp	nc,_6f9c
+		jp	nc,char_restart
 		ld	h,a
-		ld	(00072h),hl
+		ld	(cursor_xy),hl
 		ld	hl,_72b2
-		jp	_6f9f
+		jp	char_done
 
 _72b2:		sub	020h
 		cp	050h
-		jp	nc,_705f
+		jp	nc,conout_done
 		ld	l,a
-		ld	(00072h),hl
-		jp	_705f
+		ld	(cursor_xy),hl
+		jp	conout_done
 
-_72c0:		push	hl
-		ld	hl,00076h
-		cp	040h
+conout_esc_r:	push	hl
+		ld	hl,console_flags
+		cp	'@'
 		jr	z,_72e0
-		cp	044h
+		cp	'D'
 		jr	z,_72e4
-		cp	043h
+		cp	'C'
 		jr	z,_72e8
-		cp	063h
+		cp	'c'
 		jr	z,_72f6
-		cp	047h
+		cp	'G'
 		jr	z,_7308
-		cp	067h
+		cp	'g'
 		jr	z,_730c
 _72dc:		pop	hl
-		jp	_6f9c
+		jp	char_restart
 
 _72e0:		res	2,(hl)
 		jr	_72dc
@@ -6818,37 +6865,38 @@ _730c:		res	1,(hl)
 _7310:		defb	0fch,00ah
 _7312:		defb	0fdh,069h
 		defb	000h
-_7315:		ld	l,c
-_7316:		cp	03fh
+_7315:		defb	$69
+
+conout_esc_std:	cp	'?'
 		jr	nz,_7320
 		ld	hl,_7329
-		jp	_6f9f
+		jp	char_done
 
 _7320:		ld	(_737d),a
 		ld	hl,_7372
-		jp	_6f9f
+		jp	char_done
 
 _7329:		cp	033h
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	hl,_7334
-		jp	_6f9f
+		jp	char_done
 
 _7334:		cp	033h
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	hl,_733f
-		jp	_6f9f
+		jp	char_done
 
 _733f:		cp	068h
 		jr	z,_735c
 		cp	06ch
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	a,(_7315)
 		and	01fh
 		ld	(_7315),a
 		ld	(_7312+1),a
 		ld	hl,_7310
 		call	_7760
-		jp	_6f9c
+		jp	char_restart
 
 _735c:		ld	a,(_7315)
 		and	01fh
@@ -6857,21 +6905,21 @@ _735c:		ld	a,(_7315)
 		ld	(_7312+1),a
 		ld	hl,_7310
 		call	_7760
-		jp	_6f9c
+		jp	char_restart
 
 _7372:		cp	020h
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	hl,_737e
-		jp	_6f9f
+		jp	char_done
 
 _737d:		ld	e,a
 _737e:		cp	071h
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	a,(_737d)
 		cp	05fh
 		jr	z,_73aa
 		cp	07fh
-		jp	nz,_6f9c
+		jp	nz,char_restart
 		ld	a,(_7315)
 		and	060h
 		or	001h
@@ -6881,7 +6929,7 @@ _737e:		cp	071h
 		ld	(_73cb+1),a
 		ld	hl,_73c5
 		call	_7760
-		jp	_6f9c
+		jp	char_restart
 
 _73aa:		ld	a,(_7315)
 		and	060h
@@ -6892,13 +6940,14 @@ _73aa:		ld	a,(_7315)
 		ld	(_73cb+1),a
 		ld	hl,_73c5
 		call	_7760
-		jp	_6f9c
+		jp	char_restart
 
 _73c5:		defb	0fch,00ah
 _73c7:		defb	0fdh,009h
 		defb	0fch,00bh
 _73cb:		defb	0fdh,009h
 		defb	000h
+
 _73ce:		ld	a,b
 		or	c
 		ret	z
@@ -6993,23 +7042,27 @@ _742f:		pop	hl
 		pop	hl
 		jr	_7404
 
-_743e:		ld	a,h
+; Convert HL = (X,Y) into VRAM offset in HL.
+
+xy2vram_off:	ld	a,h
 		ld	c,l
-		ld	b,000h
+		ld	b,0
 		call	line_offset
 		add	hl,bc
-		ld	bc,(00070h)
+		ld	bc,(vram_pos)
 		add	hl,bc
 		ld	a,h
 		and	03fh
 		ld	h,a
 		ret	
 
-_7450:		push	bc
-		call	_743e
+; Convert HL = (X,Y) into VRAM address in HL.
+
+xy2vram_addr:	push	bc
+		call	xy2vram_off
 		pop	bc
 		ld	a,h
-		or	0f8h
+		or	high(video_RAM)
 		ld	h,a
 		ret	
 
@@ -7026,9 +7079,11 @@ line_offset:	ld	l,a
 		add	hl,hl
 		ret	
 
-_7466:		ld	a,i
+; Set the top left corner of the screen to start displaying at VRAM address HL.
+
+set_vram_pos:	ld	a,i
 		push	af
-		ld	(00070h),hl
+		ld	(vram_pos),hl
 		ld	c,0fch
 		ld	d,00dh
 		ld	a,l

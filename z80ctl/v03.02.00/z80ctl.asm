@@ -578,6 +578,12 @@ _4307:		call	printimm
 		ascii	27,'Y7',10,13,0
 		ret	
 
+; RST 38 vector.  Some Model 12/16/6000 machines had bad chips that caused phantom
+; opcode fetches of 0xFF.  This handler looks at the instruction before the return
+; address and does a halt if a RST 38 called it.  Otherwise it prints a warning and
+; returns back to the original address assuming it was a phantom fetch and that a
+; retry will operate correctly.
+
 _4311:		ex	(sp),hl
 		push	af
 		dec	hl

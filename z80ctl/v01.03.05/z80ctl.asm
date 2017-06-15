@@ -40,6 +40,14 @@ console_flags:	defs	1	; output flags (guessing inverse mode, etc)
 ; However, the shadow copies are not always updated.  Probably only when
 ; single bits may need to be changed.
 
+sh_de		equ	$15e	; port shadow for $DE - tranfer control latch
+sh_df		equ	$15f	; port shadow for $DF - upper address latch
+
+; 68000 memory is accessed in pages via 16 KB window $8000 ... $BFFF.
+; The upper 9 bits of the address (A22 .. A14) are the PG register.
+; (A22 .. A15) of PG are set via port $DF (UAL).  A14 of PG is bit 7 of
+; port $DE (TCL).
+
 ; Interrupt mode 2 is used and the interrupt vector table is at $7A00.
 
 video_RAM	equ	$f800
@@ -124,24 +132,26 @@ _5088:		di
 		ld	(0017fh),a
 		out	(0ffh),a
 		ld	a,004h
-		ld	(0015eh),a
+		ld	(sh_de),a	; halt 68000
 		out	(0deh),a
 		ld	a,000h
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
-		ld	de,(08006h)
+		ld	de,(08006h)	; Read 00:0006 from 68000 memory.
 		ld	a,00ch
-		ld	(0015eh),a
+		ld	(sh_de),a	; reset 68000
 		out	(0deh),a
-		ex	(sp),hl
+		ex	(sp),hl		; ensure it has time to react
 		ex	(sp),hl
 		ex	(sp),hl
 		ex	(sp),hl
 		ex	(sp),hl
 		ex	(sp),hl
 		ld	a,000h
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
+; Waiting for 00:0006 to change (likely signalling 68000 is ready).
+; Seems like that points to the special communication area in page 0.
 _50de:		ld	hl,(08006h)
 		or	a
 		sbc	hl,de
@@ -180,7 +190,7 @@ _5142:		defb	000h
 _5143:		defb	000h			
 _5144:		defb	000h			
 		defb	000h			
-_5146:		call	_76e8
+_5146:		call	page_0
 		ld	iy,(0019bh)
 		ld	a,(002e4h)
 		or	a
@@ -411,7 +421,7 @@ _530a:		nop
 		nop	
 		nop	
 
-_5314:		call	_76e8
+_5314:		call	page_0
 		ld	de,(00191h)
 		ld	hl,00180h
 		add	hl,de
@@ -432,19 +442,19 @@ _5338:		push	af
 		push	de
 		push	hl
 		call	_5433
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	d,a
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	e,a
-		call	_76e8
+		call	page_0
 		ld	hl,(0019bh)
 		ld	a,(hl)
 		ld	(_5143),a
 		ld	a,e
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,d
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -457,7 +467,7 @@ panic:		di
 		ld	a,0ffh
 		out	(0efh),a
 		ld	a,004h
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		ld	a,080h
 		ld	(0017fh),a
@@ -568,7 +578,7 @@ intrvec:	word	_6746
 ; Unreferenced data?
 		defb	0adh,0bbh,0afh,0b4h,0abh,0bdh
 
-_5488:		call	_76e8
+_5488:		call	page_0
 		ld	hl,_54da
 		ld	(002fdh),hl
 		xor	a
@@ -613,7 +623,7 @@ _54fd:		ld	a,(_52f1)
 		jr	nz,_5538
 		call	_78c7
 		jr	nz,_5559
-		call	_76e8
+		call	page_0
 		ld	ix,(00197h)
 		bit	0,(ix+14h)
 		jr	z,_557a
@@ -813,9 +823,9 @@ _5737:		push	af
 		push	hl
 		push	ix
 		push	iy
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	h,a
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	l,a
 		push	hl
 		call	_5433
@@ -824,10 +834,10 @@ _5737:		push	af
 		call	_5769
 		pop	hl
 		ld	a,l
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,h
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -838,7 +848,7 @@ _5737:		push	af
 		ei	
 		ret	
 
-_5769:		call	_76e8
+_5769:		call	page_0
 		ld	ix,(00197h)
 		ld	iy,(002e6h)
 		ld	hl,(002fdh)
@@ -874,7 +884,7 @@ _5792:		ld	a,i
 		ld	de,00004h
 		add	ix,de
 		inc	(ix+02h)
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		or	020h
 		out	(0deh),a
 		and	0dfh
@@ -1401,7 +1411,7 @@ _5c40:		ld	a,(de)
 _5c44:		inc	(hl)
 		ld	a,(de)
 		djnz	_5c4f+1
-_5c48:		call	_76e8
+_5c48:		call	page_0
 		ld	ix,00024h
 _5c4f:		ld	de,(00191h)
 		add	ix,de
@@ -1437,7 +1447,7 @@ _5c91:		ld	hl,_52f2
 		ld	a,(00347h)
 		or	a
 		jp	nz,_5db8
-		call	_76e8
+		call	page_0
 		ld	ix,(00199h)
 		in	a,(0cfh)
 		bit	7,a
@@ -1651,9 +1661,9 @@ _5f44:		push	af
 		push	hl
 		push	ix
 		push	iy
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	h,a
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	l,a
 		push	hl
 		call	_5433
@@ -1662,10 +1672,10 @@ _5f44:		push	af
 		di	
 		pop	hl
 		ld	a,l
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,h
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -1691,7 +1701,7 @@ _5f74:		ld	a,(00347h)
 		ascii	13,10,'<< *** DIAG:HDETIME ***>>',0
 _5fb0:		ret	
 
-_5fb1:		call	_76e8
+_5fb1:		call	page_0
 		ld	ix,(00199h)
 		ld	iy,(00334h)
 		ld	hl,(00343h)
@@ -1718,7 +1728,7 @@ _5fcf:		di
 		ld	de,00004h
 		add	ix,de
 		inc	(ix+03h)
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		or	020h
 		out	(0deh),a
 		and	0dfh
@@ -1771,13 +1781,13 @@ _6042:		ld	a,0d7h
 		ld	bc,001ffh
 		call	_7806
 		ld	hl,001ffh
-		call	_7862
+		call	add_ptr_hl
 		di	
 		ld	l,0c8h
 		ld	bc,00001h
 		call	_7806
 		ld	hl,001ffh
-		call	_7879
+		call	sub_ptr_hl
 		ret	
 
 _607c:		ld	a,0d7h
@@ -1879,7 +1889,7 @@ _6169:		ld	a,h
 		ld	a,004h
 		ld	(00345h),a
 		ld	hl,00200h
-		call	_7862
+		call	add_ptr_hl
 		ld	a,(0033dh)
 		inc	a
 		ld	(0033dh),a
@@ -2066,7 +2076,7 @@ _6347:		ld	h,(iy+56h)
 		ld	l,(iy+57h)
 		ld	d,(iy+12h)
 		ld	e,(iy+13h)
-		call	_78a8
+		call	divmod
 		ld	a,h
 		or	l
 		sub	001h
@@ -2215,7 +2225,7 @@ _6492:		ld	a,(iy+59h)
 		ld	h,000h
 		ld	d,(iy+12h)
 		ld	e,(iy+13h)
-		call	_78a8
+		call	divmod
 		ld	a,l
 		ld	l,(iy+02h)
 		ld	h,(iy+03h)
@@ -2280,7 +2290,7 @@ _6504:		djnz	_6504
 		ld	a,001h
 		out	(0f1h),a
 _6518:		in	a,(0fch)
-		call	_76e8
+		call	page_0
 		ld	ix,_6e9a
 		ld	de,(00191h)
 		ld	bc,00004h
@@ -2451,12 +2461,12 @@ _6666:		push	af
 		push	hl
 		push	ix
 		push	iy
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76e8
+		call	page_0
 		ld	a,002h
 		out	(0f7h),a
 		in	a,(0f7h)
@@ -2482,10 +2492,10 @@ _66aa:		bit	2,a
 
 _66b2:		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -2605,12 +2615,12 @@ _679a:		push	af
 		push	de
 		push	hl
 		call	_67e7
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76e8
+		call	page_0
 _67ad:		ld	c,(iy+07h)
 		in	d,(c)
 		ld	a,(iy+05h)
@@ -2630,10 +2640,10 @@ _67ca:		call	jphl
 
 _67d0:		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -2783,12 +2793,12 @@ key_intr:	push	af
 		push	hl
 		push	ix
 		push	iy
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76e8
+		call	page_0
 		in	a,(0ffh)
 		and	080h
 		jr	z,nokey
@@ -2799,10 +2809,10 @@ key_intr:	push	af
 		call	_6947
 nokey:		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -2819,12 +2829,12 @@ _68d6:		push	af
 		push	hl
 		push	ix
 		push	iy
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76e8
+		call	page_0
 		ld	a,003h
 		out	(0e3h),a
 		ld	ix,(_6ea8)
@@ -2832,10 +2842,10 @@ _68d6:		push	af
 		call	_6911
 		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	iy
 		pop	ix
@@ -2982,7 +2992,7 @@ _6a07:		push	af
 		pop	af
 		ret	
 
-_6a1d:		call	_76e8
+_6a1d:		call	page_0
 		ld	ix,(0019dh)
 		ld	a,(002e3h)
 		cp	032h
@@ -3003,7 +3013,7 @@ _6a35:		ld	a,b
 		call	nz,_6d9c
 _6a4e:		ret	
 
-_6a4f:		call	_76e8
+_6a4f:		call	page_0
 		ld	ix,_6e9a
 		ld	b,00ah
 _6a58:		ld	e,(ix+00h)
@@ -3433,7 +3443,7 @@ _6d86:		ld	iy,_6df9
 		ld	a,(iy+00h)
 		or	a
 		ret	z
-		call	_76e8
+		call	page_0
 		ld	ix,(_6ea8)
 		di	
 		call	_6911
@@ -3444,7 +3454,7 @@ _6d9c:		ld	ix,(00191h)
 		ld	de,00004h
 		add	ix,de
 		inc	(ix+00h)
-_6da8:		ld	a,(0015eh)
+_6da8:		ld	a,(sh_de)
 		or	040h
 		out	(0deh),a
 		and	0bfh
@@ -3762,7 +3772,7 @@ _6eea:		ld	a,(_6db9)
 		ret	nz
 		dec	a
 		ld	(017c1h),a
-		call	_76e8
+		call	page_0
 		ld	ix,(keydcb)
 		ld	iy,_6db4
 		ld	b,005h
@@ -3802,7 +3812,7 @@ _6f3a:		ld	a,(_52f4)
 		ret	nz
 		dec	a
 		ld	(017c1h),a
-		call	_76e8
+		call	page_0
 		ld	ix,(0019fh)
 		ld	iy,(00195h)
 		ld	bc,00000h
@@ -3882,7 +3892,7 @@ _7005:		ld	a,h
 		push	bc
 		call	_775c
 		pop	hl
-		jp	_7862
+		jp	add_ptr_hl
 
 _7014:		call	panic
 _7017:		ascii	'<< *** DIAG:SRBADDR *** >>',0
@@ -4737,7 +4747,7 @@ _75ae:		ld	a,(00180h)
 		ret	z
 		xor	a
 		ld	(00180h),a
-		call	_76e8
+		call	page_0
 		call	_7696
 		ld	ix,(00193h)
 		ld	b,(ix+00h)
@@ -4756,7 +4766,7 @@ _75d1:		inc	a
 		ld	(ix+01h),a
 		set	0,(ix+00h)
 		di	
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		or	010h
 		out	(0deh),a
 		and	0efh
@@ -4787,7 +4797,7 @@ _760e:		call	_6a1d
 		di	
 		jp	_56fa
 
-_761f:		call	_76e8
+_761f:		call	page_0
 		ld	ix,(00191h)
 		ld	de,00000h
 		add	ix,de
@@ -4879,60 +4889,71 @@ _76af:		ei
 		ldir	
 		jr	_76a1
 
-_76bd:		push	bc
-		ld	b,(ix+02h)
-		ld	c,(ix+03h)
+; Follow big-endian 32 bit pointer at PG:ix.
+; Returns with PG:ix pointing at the new location.
+; Only 23 bits are significant so it ignores the highest byte at (ix+0)
+
+deref_PG_ix:	push	bc
+		ld	b,(ix+02h)	; A16 .. A8
+		ld	c,(ix+03h)	;  A7 .. A0
 		set	7,b
 		res	6,b
-		push	bc
-		ld	b,(ix+02h)
-		rl	b
-		ld	a,(ix+01h)
-		rl	a
-		ld	(0015fh),a
+		push	bc		; bits 0 .. 13 mapped to $8000 .. $FFFF
+		ld	b,(ix+02h)	; A15    ..    A8
+		rl	b		; A14 .. A8 carry
+		ld	a,(ix+01h)	; A23   ..   A16
+		rl	a		; A22 .. A15 A14
+		ld	(sh_df),a
 		out	(0dfh),a
-		ld	a,(0015eh)
-		rla	
-		rl	b
-		rra	
-		ld	(0015eh),a
+		ld	a,(sh_de)
+		rla			; shift out A14 from TCL
+		rl	b		; carry = A14
+		rra			; put new A14 into TCL
+		ld	(sh_de),a
 		out	(0deh),a
-		pop	ix
+		pop	ix		; IX = Z-80 address inside page
 		pop	bc
 		ret	
 
-_76e8:		push	af
-		ld	a,(0015eh)
-		and	07fh
-		ld	(0015eh),a
+; Set PG register to 0.
+
+page_0:		push	af
+		ld	a,(sh_de)
+		and	07fh		; A14 = 0
+		ld	(sh_de),a
 		out	(0deh),a
-		xor	a
-		ld	(0015fh),a
+		xor	a		; (A22 .. A15) = 0
+		ld	(sh_df),a
 		out	(0dfh),a
 		pop	af
 		ret	
 
-_76fb:		ld	a,(0015eh)
-		add	a,080h
-		ld	(0015eh),a
+; Increment PG register.
+
+page_inc:	ld	a,(sh_de)
+		add	a,080h		; A14++
+		ld	(sh_de),a
 		out	(0deh),a
 		ret	nc
-		ld	a,(0015fh)
-		inc	a
-		ld	(0015fh),a
+		ld	a,(sh_df)
+		inc	a		; (A22 .. A15)++
+		ld	(sh_df),a
 		out	(0dfh),a
 		ret	
+
+; I think this copies from 68000 memory to Z-80 memory.  Needs verification.
+; TODO: verify guess and figure out arguments.
 
 _7710:		push	ix
 		push	bc
 		push	de
 		push	hl
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76bd
+		call	deref_PG_ix
 		push	ix
 		pop	de
 _7724:		push	hl
@@ -4954,17 +4975,17 @@ _7738:		pop	hl
 		ex	(sp),hl
 		ldir	
 		pop	bc
-		call	_76fb
+		call	page_inc
 		res	6,d
 		ld	a,c
 		or	b
 		jr	nz,_7724
 		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -4972,16 +4993,19 @@ _7738:		pop	hl
 		pop	ix
 		ret	
 
+; I think this copies from Z-80 memory to 68000 memory.  Needs verification.
+; TODO: verify guess and figure out arguments.
+
 _775c:		push	ix
 		push	bc
 		push	de
 		push	hl
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76bd
+		call	deref_PG_ix
 		push	ix
 		pop	de
 _7770:		push	hl
@@ -5006,17 +5030,17 @@ _7785:		pop	hl
 		ldir	
 		ex	de,hl
 		pop	bc
-		call	_76fb
+		call	page_inc
 		res	6,d
 		ld	a,c
 		or	b
 		jr	nz,_7770
 		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -5024,16 +5048,19 @@ _7785:		pop	hl
 		pop	ix
 		ret	
 
+; Read from a port to 68000 memory, most likely.
+; TODO: verify guess and figure out arguments.
+
 _77ab:		push	ix
 		push	bc
 		push	de
 		push	hl
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76bd
+		call	deref_PG_ix
 		push	ix
 		pop	de
 _77bf:		push	hl
@@ -5068,17 +5095,17 @@ _77e4:		inir
 
 _77e8:		ex	de,hl
 		pop	bc
-		call	_76fb
+		call	page_inc
 		res	6,d
 		ld	a,c
 		or	b
 		jr	nz,_77bf
 		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -5086,16 +5113,19 @@ _77e8:		ex	de,hl
 		pop	ix
 		ret	
 
+; Send 68000 memory to a port, most likely.
+; TODO: verify guess and figure out arguments.
+
 _7806:		push	ix
 		push	bc
 		push	de
 		push	hl
-		ld	a,(0015fh)
+		ld	a,(sh_df)
 		ld	d,a
-		ld	a,(0015eh)
+		ld	a,(sh_de)
 		ld	e,a
 		push	de
-		call	_76bd
+		call	deref_PG_ix
 		push	ix
 		pop	de
 _781a:		push	hl
@@ -5131,17 +5161,17 @@ _7840:		otir
 
 _7844:		ex	de,hl
 		pop	bc
-		call	_76fb
+		call	page_inc
 		res	6,d
 		ld	a,c
 		or	b
 		jr	nz,_781a
 		pop	de
 		ld	a,d
-		ld	(0015fh),a
+		ld	(sh_df),a
 		out	(0dfh),a
 		ld	a,e
-		ld	(0015eh),a
+		ld	(sh_de),a
 		out	(0deh),a
 		pop	hl
 		pop	de
@@ -5149,26 +5179,30 @@ _7844:		ex	de,hl
 		pop	ix
 		ret	
 
-_7862:		ld	a,(ix+03h)
+; Add HL to 32 bit big-endian pointer at (IX).
+
+add_ptr_hl:	ld	a,(ix+3)
 		add	a,l
-		ld	(ix+03h),a
-		ld	a,(ix+02h)
+		ld	(ix+3),a
+		ld	a,(ix+2)
 		adc	a,h
-		ld	(ix+02h),a
-		ld	a,(ix+01h)
-		adc	a,000h
-		ld	(ix+01h),a
+		ld	(ix+2),a
+		ld	a,(ix+1)
+		adc	a,0
+		ld	(ix+1),a
 		ret	
 
-_7879:		ld	a,(ix+03h)
+; Subtract HL from 32 bit big-endian pointer at (IX).
+
+sub_ptr_hl:	ld	a,(ix+3)
 		sub	l
-		ld	(ix+03h),a
-		ld	a,(ix+02h)
+		ld	(ix+3),a
+		ld	a,(ix+2)
 		sbc	a,h
-		ld	(ix+02h),a
-		ld	a,(ix+01h)
-		sbc	a,000h
-		ld	(ix+01h),a
+		ld	(ix+2),a
+		ld	a,(ix+1)
+		sbc	a,0
+		ld	(ix+1),a
 		ret	
 
 _7890:		push	bc
@@ -5191,7 +5225,9 @@ _7893:		ld	a,(hl)
 _78a6:		pop	bc
 		ret	
 
-_78a8:		ld	bc,00000h
+; Return HL = HL % DE and BC = HL / DE.
+
+divmod:		ld	bc,00000h
 		or	a
 _78ac:		sbc	hl,de
 		jp	c,_78b4

@@ -42,6 +42,7 @@ console_flags:	defs	1	; output flags (guessing inverse mode, etc)
 
 sh_de		equ	$15e	; port shadow for $DE - tranfer control latch
 sh_df		equ	$15f	; port shadow for $DF - upper address latch
+sh_ff		equ	$17f	; port shadow for $FF
 
 ; 68000 memory is accessed in pages via 16 KB window $8000 ... $BFFF.
 ; The upper 9 bits of the address (A22 .. A14) are the PG register.
@@ -129,7 +130,7 @@ _5088:		di
 		ld	hl,_53d3
 		ld	(00039h),hl
 		ld	a,080h
-		ld	(0017fh),a
+		ld	(sh_ff),a
 		out	(0ffh),a
 		ld	a,004h
 		ld	(sh_de),a	; halt 68000
@@ -470,7 +471,7 @@ panic:		di
 		ld	(sh_de),a
 		out	(0deh),a
 		ld	a,080h
-		ld	(0017fh),a
+		ld	(sh_ff),a
 		out	(0ffh),a
 		call	_53a8
 		call	printimm
@@ -1225,10 +1226,10 @@ _5a8c:		ld	a,001h
 		ld	a,(002e8h)
 		cp	004h
 		jr	nz,_5aa5
-		call	_7710
+		call	copy_to_68k
 		jr	_5aa8
 
-_5aa5:		call	_775c
+_5aa5:		call	copy_from_68k
 _5aa8:		di	
 		xor	a
 		ld	(00304h),a
@@ -1779,13 +1780,13 @@ _6042:		ld	a,0d7h
 		out	(0cfh),a
 		ld	l,0c8h
 		ld	bc,001ffh
-		call	_7806
+		call	68k_out
 		ld	hl,001ffh
 		call	add_ptr_hl
 		di	
 		ld	l,0c8h
 		ld	bc,00001h
-		call	_7806
+		call	68k_out
 		ld	hl,001ffh
 		call	sub_ptr_hl
 		ret	
@@ -1875,7 +1876,7 @@ _6125:		ld	hl,(0033bh)
 		push	hl
 		ld	l,0c8h
 		ld	bc,00200h
-		call	_77ab
+		call	68k_in
 		pop	hl
 		in	a,(0cfh)
 		and	0c2h
@@ -3061,7 +3062,7 @@ _6aaa:		ld	(iy+05h),a
 		ld	(iy+0fh),h
 		ld	c,a
 		ld	b,000h
-		call	_775c
+		call	copy_from_68k
 		ld	l,(iy+12h)
 		ld	h,(iy+13h)
 		call	jphl
@@ -3890,7 +3891,7 @@ _7005:		ld	a,h
 		cp	0f0h
 		jr	nz,_7014
 		push	bc
-		call	_775c
+		call	copy_from_68k
 		pop	hl
 		jp	add_ptr_hl
 
@@ -4725,7 +4726,7 @@ hexdig:		and	00fh
 		daa	
 		ret	
 
-_7591:		push	af
+nmi_handler:	push	af
 		ld	a,(00181h)
 		inc	a
 		ld	(00181h),a
@@ -4807,20 +4808,20 @@ _761f:		call	page_0
 		ld	(00181h),a
 		dec	a
 		ld	(00182h),a
-		ld	hl,_7659
+		ld	hl,nmi_jp
 		ld	de,00066h
 		ld	bc,00003h
-		ldir	
-		ld	a,(0017fh)
+		ldir			; have NMI intr go to nmi_handler
+		ld	a,(sh_ff)
 		or	020h
-		ld	(0017fh),a
+		ld	(sh_ff),a
 		out	(0ffh),a
 		in	a,(0feh)
 		ld	hl,_75ea
 		ld	a,003h
 		jp	_765c
 
-_7659:		jp	_7591
+nmi_jp:		jp	nmi_handler
 
 _765c:		push	hl
 		ld	c,a
@@ -4941,10 +4942,11 @@ page_inc:	ld	a,(sh_de)
 		out	(0dfh),a
 		ret	
 
-; I think this copies from 68000 memory to Z-80 memory.  Needs verification.
-; TODO: verify guess and figure out arguments.
+; Copy BC bytes from HL to 32 bit big-endian pointer at PG:ix in 68000 memory.
+; Note: destination pointer is at PG:ix; that isn't the destination itself.
+; Reasonably straightforward but must account for crossing the window boundary.
 
-_7710:		push	ix
+copy_to_68k:	push	ix
 		push	bc
 		push	de
 		push	hl
@@ -4993,10 +4995,11 @@ _7738:		pop	hl
 		pop	ix
 		ret	
 
-; I think this copies from Z-80 memory to 68000 memory.  Needs verification.
-; TODO: verify guess and figure out arguments.
+; Copy BC bytes from 32 bit big-endian pointer at PG:ix in 68000 memory to HL.
+; Note: source pointer is at PG:ix; that isn't the source itself.
+; Reasonably straightforward but must account for crossing the window boundary.
 
-_775c:		push	ix
+copy_from_68k:	push	ix
 		push	bc
 		push	de
 		push	hl
@@ -5048,10 +5051,9 @@ _7785:		pop	hl
 		pop	ix
 		ret	
 
-; Read from a port to 68000 memory, most likely.
-; TODO: verify guess and figure out arguments.
+; Read BC bytes from port L to 68000 memory pointer at PG:ix
 
-_77ab:		push	ix
+68k_in:		push	ix
 		push	bc
 		push	de
 		push	hl
@@ -5113,10 +5115,9 @@ _77e8:		ex	de,hl
 		pop	ix
 		ret	
 
-; Send 68000 memory to a port, most likely.
-; TODO: verify guess and figure out arguments.
+; Write BC bytes from 68000 memory pointer at PG:ix to port L.
 
-_7806:		push	ix
+68k_out:	push	ix
 		push	bc
 		push	de
 		push	hl

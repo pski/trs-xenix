@@ -4898,7 +4898,7 @@ deref_PG_ix:	push	bc
 		ld	c,(ix+03h)	;  A7 .. A0
 		set	7,b
 		res	6,b
-		push	bc		; bits 0 .. 13 mapped to $8000 .. $FFFF
+		push	bc		; bits 0 .. 13 mapped to $8000 .. $BFFF
 		ld	b,(ix+02h)	; A15    ..    A8
 		rl	b		; A14 .. A8 carry
 		ld	a,(ix+01h)	; A23   ..   A16

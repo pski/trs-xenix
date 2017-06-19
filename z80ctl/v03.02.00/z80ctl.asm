@@ -37,9 +37,91 @@ console_flags:	defs	1	; output flags (guessing inverse mode, etc)
 ; However, the shadow copies are not always updated.  Probably only when
 ; single bits may need to be changed.
 
+		org	$80
+port_shadow:	defs	$100
+
+sh_a0		equ	$120	; port shadow for $A0 - speaker
 sh_de		equ	$15e	; port shadow for $DE - tranfer control latch
 sh_df		equ	$15f	; port shadow for $DF - upper address latch
 sh_ff		equ	$17f	; port shadow for $FF
+
+; Data area $180 .. $3cff is initialized to 0.
+
+prev_tick	equ	$180	; previous tick count
+tick		equ	$181	; 30 HZ real time clock count
+cnt_to_second	equ	$182	; countdown timer running at 1 Hz.
+cnt_to_tick2	equ	$183	; countdown timer every 2 ticks
+cnt_to_tick8	equ	$184	; countdown timer every 8 ticks (turns off bell)
+
+base0		equ	$186	; base pointer of some common page0 memory block
+clock0		equ	$188	; base0 + 0; real time clock related; 2 bytes
+base0_4		equ	$18A	; base0 + 4; purpose unknown
+base0_32	equ	$18C	; base0 + $20; purpose unknown
+base0_60	equ	$18E	; base0 + $3c; purpose unknown
+cmdbuf0		equ	$190	; base0 + $56c; 2 byte ptrs and 32 word command ring buffer
+inputq0		equ	$192	; base0 + $368; where we send character input
+base0_724	equ	$194	; base0 + $2d4; purpose unknown
+console0	equ	$196	; base0 + $58; seems associated with console
+
+; (base0) + 2 is halt shutdown flags.  Low 6 bits must be $15 for
+; shutdown/restart to occur on cmd_halt or cmd_reboot.  And bit 6 ($40)
+; disables some of the shutdown processing.
+
+; Data buffers for output queued for each character device.  These are
+; not ring buffers and appear to have no obvious protection from overflow.
+
+		org	$198
+dbuf_sio_A	defs	32
+dbuf_sio_B	defs	32
+dbuf_dev_4	defs	32
+dbuf_dev_5	defs	32
+dbuf_dev_6	defs	32
+dbuf_dev_7	defs	32
+dbuf_dev_8	defs	32
+dbuf_dev_9	defs	32
+dbuf_dev_10	defs	32
+dbuf_dev_11	defs	32
+dbuf_dev_12	defs	32
+dbuf_printer	defs	32
+dbuf_console	defs	32
+
+; Device Control Block offsets
+d_cnt		equ	4	; count of bytes in data buffer
+d_num		equ	5	; device number
+d_port		equ	6	; I/O port (some don't have this)
+d_bufp		equ	7	; pointer to put next char in data buffer
+d_buf		equ	9	; pointer to data buffer
+
+; Device numbers (which index into the DCB table)
+dev_console	equ	0
+dev_printer	equ	3
+
+; $3600 .. $3cff is where all character device input is queued.  Organized as 6
+; blocks of 256 bytes each.  The first byte is the number of input pairs in
+; a block.  The second byte I think means that we're finished with the block
+; and it can be queued for delivery (if flushed or something).
+; Each pair is the device number followed by the data.  With 2 bookkeeping
+; bytes per block there is room for 127 device/data pairs.  The device
+; number may have the high bit set which seems to indicate the data is
+; device status information rather than actual received input.
+
+iq_writep	equ	$8d3	; pointer where next input is written
+iq_writecnt	equ	$8d5	; number of blocks in queue
+iq_writeblk	equ	$8d6	; block we're writing to, should always by
+				; high(iq_writep - input_queue).
+iq_readblk	equ	$8d7	; next block to be read from queue
+iq_tmp		equ	$8d8	; temporary storage
+
+iq_blk_num	equ	6
+; Offsets from the start of the block.
+iq_pair_cnt	equ	0	; byte 0 is count of pairs in block
+iq_flag		equ	1	; byte 1 block ready to be queued
+iq_pairs	equ	2	; byte 2 and on is pair storage
+
+		org	$3600
+input_queue	defs	iq_blk_num * 256
+
+; Data area $3d00 .. $3fff is initialized to $ff.
 
 ; 68000 memory is accessed in pages via 16 KB window $8000 ... $BFFF.
 ; The upper 9 bits of the address (A22 .. A14) are the PG register.
@@ -283,8 +365,8 @@ _3f4c:		defb	000h
 		defb	000h			
 		defb	000h			
 		defb	000h			
-_3ff0:		defb	09bh			
-checksum:	word	00a9eh
+checksum:	word	09e9bh		; note: read in big-endian order.
+		defb	00ah
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -319,25 +401,31 @@ _4090:		dec	c
 		jr	nz,_4089
 		dec	b
 		jr	nz,_4089
-; This section isn't about the checksum.  Somehow a high byte in
-; RAM controls a particular variable.  Presumably something set up
-; by the bootstrap process or perhaps something that naturally
-; indicates a hardware difference.
-		ld	a,(_3ff0)
+		ld	a,(checksum)
 		ld	b,a
+; This section is mostly not about the checksum.
+;
+; Perhaps also a bit of a trap to those who might blindly nop-out
+; the checksum code as the value changed defaults to 0 so presumably
+; it won't have a valid value.
+;
+; Ah, it is setting up the real time clock frequency.  0x7fff has a '5'
+; if the real time clock is 25 Hz (i.e., half PAL frame rate).  Must be
+; something set up by the boot code.
+;
 		ld	a,(07fffh)
 		and	07fh
-		ex	de,hl
+		ex	de,hl		; Oh, this is for the checksum
 		cp	035h
-		ld	a,019h
-		jr	z,_40a8
-		ld	a,01eh
-_40a8:		ld	(_75c4),a
+		ld	a,019h		; 25 RTC interrupts/second
+		jr	z,is_pal
+		ld	a,01eh		; 30 RTC interrupts/second
+is_pal:		ld	(rtc_hz),a
 ; Back to the checksum checking.
-		ld	a,(checksum)
+		ld	a,(checksum+1)
 		ld	c,a
 		or	a
-		sbc	hl,bc			; NOP this instruction out to disable checksum.
+		sbc	hl,bc		; NOP this instruction out to disable checksum.
 ; 4 meaningless instructions whose ASCII value is 'FDIV'.
 ; A signature/easter egg of legendary Tandy programmer Frank Durda IV.
 		ld	b,(hl)
@@ -361,17 +449,17 @@ checksum_OK:	ld	hl,00180h
 		ld	de,00181h
 		ld	bc,03b7fh
 		ld	(hl),000h
-		ldir	
+		ldir			; zero $180 .. $3cff
 		ld	hl,03d00h
 		ld	de,03d01h
 		ld	bc,002ffh
 		ld	(hl),0ffh
-		ldir	
-		ld	a,0c3h
+		ldir			; $3d00 .. $3fff set to $ff
+		ld	a,0c3h		; JP opcode
 		ld	(00038h),a
 		ld	(00035h),a
-		ld	hl,_4311
-		ld	(00039h),hl
+		ld	hl,_4311	; RST 38 vector
+		ld	(00039h),hl	; RST 38 will jump to the vector
 		ld	hl,_43c9
 		ld	(00036h),hl
 		ld	a,080h
@@ -379,7 +467,7 @@ checksum_OK:	ld	hl,00180h
 		out	(0ffh),a
 		ld	a,004h
 		ld	(sh_de),a
-		out	(0deh),a
+		out	(0deh),a	; Halt 68000
 		ld	a,000h
 		ld	(sh_df),a
 		out	(0dfh),a
@@ -388,23 +476,24 @@ checksum_OK:	ld	hl,00180h
 		ld	(08000h),de
 		ld	a,(sh_de)
 		or	001h
-		out	(0deh),a
+		out	(0deh),a	; Turn on little endian mode
 		ld	hl,(08000h)
 		and	0feh
-		out	(0deh),a
+		out	(0deh),a	; Turn off little endian mode
 		ld	(08000h),bc
 		or	a
 		sbc	hl,de
 		jr	z,_415a
 		call	panic
 		ascii	'NewPal - Hardware Modification Required',13,10,0
+
 _415a:		ld	de,(08006h)
 		ld	a,00ch
 		ld	(sh_de),a
-		out	(0deh),a
+		out	(0deh),a	; Reset 68000 (requires HALT bit, too)
 		ld	a,000h
 		ld	(sh_de),a
-		out	(0deh),a
+		out	(0deh),a	; 68000 can run free now
 _416c:		ld	hl,(08006h)
 		or	a
 		sbc	hl,de
@@ -414,8 +503,8 @@ _416c:		ld	hl,(08006h)
 		ld	h,e
 		set	7,h
 		res	6,h
-		ld	(00186h),hl
-		ld	hl,(00186h)
+		ld	(base0),hl
+		ld	hl,(base0)
 		ld	de,005aeh
 		add	hl,de
 		ld	a,(00077h)
@@ -427,13 +516,13 @@ _416c:		ld	hl,(08006h)
 		nop	
 		nop	
 		call	page_0
-		call	_444f
-		call	_4291
+		call	setup_intrvec
+		call	get_cmdbuf0
 		call	_77d7
-		call	_7638
+		call	clock_init
 		call	_451a
 		call	_5004
-		call	_6f58
+		call	console_init
 		ld	hl,splash
 		call	ring_print
 		call	ring_printimm
@@ -441,28 +530,30 @@ _416c:		ld	hl,(08006h)
 		call	_626a
 		call	_6ce9
 		call	_5965
-		ld	hl,(00186h)
+		ld	hl,(base0)
 		ld	de,005afh
 		add	hl,de
 		ld	a,(hl)
 		ld	(_5943),a
-		ld	(_41de),sp
+		ld	(stack_base),sp
 		call	_7536
 		ld	hl,00000h
 		ld	(08006h),hl
-		jr	_41e0
+		jr	main_loop
 
-_41dc:		nop	
-_41dd:		nop	
-_41de:		nop	
-		nop	
-_41e0:		xor	a
-		ld	hl,_41dc
+; cmd_go must be constantly set to 1 in order for 68000 commands to be dispatched.
+; Interrupt $19 does that.
+
+cmd_go:		defb	0
+_41dd:		defb	0		; unused flag
+stack_base:	word	0
+main_loop:	xor	a
+		ld	hl,cmd_go
 		di	
 		or	(hl)
-		ld	(hl),000h
+		ld	(hl),0
 		ei	
-_41e9:		call	nz,_421b
+_41e9:		call	nz,dispatch_cmds ; patched to CALL in Model II
 		ld	a,(003bfh)
 		or	a
 		call	nz,_5052
@@ -470,49 +561,60 @@ _41e9:		call	nz,_421b
 		call	_6cd1
 		call	_4579
 		ei	
-		call	_75c5
-		call	_677c
-		ld	hl,00000h
+		call	clock_update
+		call	char_io_update
+; Check if stack growing (or, less likely, shrinking).  If so then 
+; something is going wrong.
+		ld	hl,0
 		add	hl,sp
-		ld	de,(_41de)
+		ld	de,(stack_base)
 		or	a
 		sbc	hl,de
-		jp	z,_41e0
+		jp	z,main_loop
 		call	panic
 		ascii	'SckMud',0
-_421b:		ld	hl,(00190h)
-		ld	b,(hl)
+
+dispatch_cmds:	ld	hl,(cmdbuf0)
+		ld	b,(hl)		; get ring write point (head)
 		inc	hl
-		ld	a,(hl)
+		ld	a,(hl)		; get ring read point (tail)
 		cp	b
-		ret	z
+		ret	z		; cmd buffer empty if head == tail
 		inc	a
-		ld	(hl),a
+		ld	(hl),a		; consume command
 		inc	hl
-		and	01fh
+		and	01fh		; keep within 32 words of buffer
 		rlca	
 		ld	e,a
-		ld	d,000h
-		add	hl,de
-		call	_4233
-		jp	_421b
+		ld	d,0
+		add	hl,de		; HL now pointers to command
+		call	exec_cmd
+		jp	dispatch_cmds
 
-_4233:		ld	a,(hl)
-		ld	c,a
+; Commands from the 68000 are sent as follows:
+; of them stored two bytes:  "0 CMD DEVN" and "xxxx xxx #".  The bits
+; "CMD#" are combined to look up the handler in cmd_tab.
+; BUG: Their table only has 13 entries; older code checked $0x .. $6x range.
+; The first command byte is saved in C register, the second in B.
+; (C & $F) is the device number.
+; Bit 1 of B is used but that's all I see so far.
+
+exec_cmd:	ld	a,(hl)
+		ld	c,a		; save device number
 		and	0f0h
-		jp	m,_4250
+		jp	m,panic_badmaj	; command must be in $0x .. $7x range
 		rrca	
 		rrca	
-		ld	e,a
+		ld	e,a		; command / 4
 		inc	hl
 		ld	a,(hl)
 		ld	b,a
-		and	001h
+		and	1
 		rlca	
 		or	e
 		ld	e,a
-		ld	hl,_425c
-		ld	d,000h
+		ld	hl,cmd_tab
+		ld	d,0
 		add	hl,de
 		ld	e,(hl)
 		inc	hl
@@ -520,43 +622,45 @@ _4233:		ld	a,(hl)
 		ld	l,e
 		jp	(hl)
 
-_4250:		call	panic
+panic_badmaj:	call	panic
 		ascii	'BadMaj',13,10,0
-_425c:		word	_459b
-		word	_4274
-		word	_506f
-		word	_4274
-		word	_6869
-		word	_68b0
-		word	_59f2
-		word	_4274
-		word	_6cf9
-		word	_6ef8
-		word	_5731
-		word	_572a
-_4274:		call	_42ab
+
+cmd_tab:	word	_459b		; x 000 xxxx  xxxx xxx 0
+		word	bad_cmd		; x 000 xxxx  xxxx xxx 1
+		word	_506f		; x 001 xxxx  xxxx xxx 0
+		word	bad_cmd		; x 001 xxxx  xxxx xxx 1
+		word	cmd_urg		; x 010 xxxx  xxxx xxF 0 (F=1 if flush?)
+		word	_68b0		; x 010 xxxx  xxxx xxx 1
+		word	_59f2		; x 011 xxxx  xxxx xxx 0
+		word	bad_cmd		; x 011 xxxx  xxxx xxx 1
+		word	_6cf9		; x 100 xxxx  xxxx xxx 0
+		word	_6ef8		; x 100 xxxx  xxxx xxx 1
+		word	cmd_halt	; x 101 xxxx  xxxx xxx 0
+		word	cmd_reboot	; x 101 xxxx  xxxx xxx 1
+
+bad_cmd:	call	bugchk_print	; x 110 xxxx  xxxx xxx 0
 		ascii	'Bd68Rq - Code: ',0
 		call	ring_preqhex
 		call	ring_printimm
 		ascii	13,10,0
 		ret	
 
-_4291:		ld	de,(00186h)
+get_cmdbuf0:	ld	de,(base0)
 		ld	hl,0056ch
 		add	hl,de
-		ld	(00190h),hl
+		ld	(cmdbuf0),hl
 		xor	a
-		ld	(_41dd),a
+		ld	(_41dd),a	; seemingly only written once (and 0 initially)
 		ret	
 
-_42a1:		push	hl
-		ld	hl,_41dc
-		ld	(hl),001h
+enable_cmds:	push	hl
+		ld	hl,cmd_go
+		ld	(hl),1
 		pop	hl
 		ei	
 		reti	
 
-_42ab:		call	ring_printimm
+bugchk_print:	call	ring_printimm
 		ascii	13,10,'Bugchk: ',0
 		jp	ring_printimm
 
@@ -565,7 +669,7 @@ panic:		di
 		out	(0efh),a
 		ld	a,004h
 		ld	(sh_de),a
-		out	(0deh),a
+		out	(0deh),a	; Halt 68000
 		ld	a,080h
 		ld	(sh_ff),a
 		out	(0ffh),a
@@ -607,7 +711,7 @@ _4311:		ex	(sp),hl
 		ld	a,(hl)
 		cp	0ffh
 		jr	z,_4334
-		call	_42ab
+		call	bugchk_print
 		ascii	'Rst7  Fetch',0
 		call	ring_preqhex16
 		call	ring_printimm
@@ -678,47 +782,48 @@ _43c9:		di
 		ascii	'Bughlt: Wnd7  Additional:',0
 		jp	z80dump
 
-_43fc:		ret	
+a_ret:		ret	
 
 
-_43fd:		ei	
+ignore_intr:	ei	
 		reti	
 
-_4400:		push	af
-		ld	a,001h
-		jr	_4417
+unknown_1:	push	af
+		ld	a,1
+		jr	unknown_interrupt_A
 
-_4405:		push	af
-		ld	a,002h
-		jr	_4417
+unknown_2:	push	af
+		ld	a,2
+		jr	unknown_interrupt_A
 
-_440a:		push	af
-		ld	a,003h
-		jr	_4417
+unknown_3:		push	af
+		ld	a,3
+		jr	unknown_interrupt_A
 
-_440f:		push	af
-		ld	a,004h
-		jr	_4417
+unknown_4:		push	af
+		ld	a,4
+		jr	unknown_interrupt_A
 
-_4414:		push	af
-		ld	a,005h
-_4417:		push	de
+unknown_5:	push	af
+		ld	a,5
+unknown_interrupt_A:
+		push	de
 		push	hl
 		ld	e,a
 		ld	d,000h
-		ld	hl,_4428+15
+		ld	hl,unkint_msg+15
 		add	hl,de
-		add	a,030h
+		add	a,'0'
 		ld	(hl),a
 		pop	hl
 		pop	de
-		call	_42ab
-_4428:		ascii	'UnkInt - Code: ........',13,10,0
+		call	bugchk_print
+unkint_msg:	ascii	'UnkInt - Code: ........',13,10,0
 		pop	af
 		ei	
 		reti	
 
-		push	de
+		push	de		; TODO!
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
@@ -726,55 +831,55 @@ _4428:		ascii	'UnkInt - Code: ........',13,10,0
 		pop	de
 jphl:		jp	(hl)
 
-_444d:		reti	
+a_reti:		reti	
 
-_444f:		im	2
+setup_intrvec:	im	2
 		ld	a,07ch
 		ld	i,a
 		ld	b,004h
-_4457:		call	_444d
+_4457:		call	a_reti		; clear pending interrupts?
 		djnz	_4457
-		ld	bc,00046h
+		ld	bc,$23*2
 		ld	hl,intrvec
 		ld	de,07c00h
-		ldir	
+		ldir			; set all $23 (35) interrupt vectors
 		ret	
 
-intrvec:	word	_656c
-		word	_6579
-		word	_6586
-		word	_43fd
-		word	_6593
-		word	_65a0
-		word	_65ad
-		word	_43fd
-		word	_65ba
-		word	_65c7
-		word	_65d4
-		word	_43fd
-		word	00000h
-		word	00000h
-		word	00000h
-		word	00000h
-		word	_6537
-		word	_64e4
-		word	_648d
-		word	_64b2
-		word	_652b
-		word	_64d8
-		word	_6486
-		word	_64ac
-		word	_4400
-		word	_42a1
-		word	_4405
-		word	_668d
-		word	_5487
-		word	_440a
-		word	_440f
-		word	_4414
-		word	_4747
-		word	_66be
-		word	_59c3
+intrvec:	word	_656c		; $00
+		word	_6579		; $01
+		word	_6586		; $02
+		word	ignore_intr	; $03
+		word	_6593		; $04
+		word	_65a0		; $05
+		word	_65ad		; $06
+		word	ignore_intr	; $07
+		word	_65ba		; $08
+		word	_65c7		; $09
+		word	_65d4		; $0A
+		word	ignore_intr	; $0B
+		word	00000h		; $0C
+		word	00000h		; $0D
+		word	00000h		; $0E
+		word	00000h		; $0F
+		word	sio_b_send_intr	; $10
+		word	_64e4		; $11	SIO channel B receive?
+		word	_648d		; $12	SIO channel B receive?
+		word	_64b2		; $13	SIO channel B receive?
+		word	sio_a_send_intr	; $14
+		word	_64d8		; $15	SIO channel A receive?
+		word	_6486		; $16	SIO channel A receive?
+		word	_64ac		; $17	SIO channel A receive?
+		word	unknown_1	; $18
+		word	enable_cmds	; $19
+		word	unknown_2	; $1A
+		word	key_intr	; $1B
+		word	_5487		; $1C
+		word	unknown_3	; $1D
+		word	unknown_4	; $1E
+		word	unknown_5	; $1F
+		word	_4747		; $20
+		word	printer_intr	; $21
+		word	_59c3		; $22
 ; Unreferenced data?
 		defb	0b9h,0bbh,0b6h,0a9h
 ; Hidden message.  Stored in reverse with lower bit flipped.
@@ -870,9 +975,9 @@ _451a:		ld	hl,_456c
 		ld	(0035ah),a
 		ld	(00359h),a
 		ld	ix,00004h
-		ld	de,(00186h)
+		ld	de,(base0)
 		add	ix,de
-		ld	(0018ah),ix
+		ld	(base0_4),ix
 		ld	(ix+14h),a
 		dec	a
 		ld	(0033eh),a
@@ -894,23 +999,25 @@ _455d:		defb	0efh,0ffh
 		defb	0e2h,0b7h
 		defb	0e2h,0feh
 		defb	000h
+
 _456c:		call	panic
 		ascii	'UEXFIRQ',13,10,0
+
 _4579:		ld	a,(00359h)
 		or	a
 		ret	z
 		xor	a
 		ld	(00359h),a
-		ld	ix,(0018ah)
+		ld	ix,(base0_4)
 		ld	iy,(0033ah)
 		ld	hl,(00351h)
 		jp	(hl)
 
-_458e:		call	_42ab
+_458e:		call	bugchk_print
 		ascii	'FdNoGo',13,10,0
 		ret	
 
-_459b:		ld	ix,(0018ah)
+_459b:		ld	ix,(base0_4)
 		bit	0,(ix+14h)
 		jr	z,_458e
 _45a5:		di	
@@ -943,6 +1050,7 @@ _45c1:		ld	a,004h
 		jr	z,_45ec
 		call	panic
 		ascii	'0FDCMD',13,10,0
+
 _45ec:		ld	a,(0033eh)
 		cp	(ix+16h)
 		jp	z,_462d
@@ -1080,7 +1188,7 @@ _4729:		ld	a,(00354h)
 		ret	nz
 		push	ix
 		push	iy
-		ld	ix,(0018ah)
+		ld	ix,(base0_4)
 		ld	iy,(0033ah)
 		ld	b,004h
 		call	_47e6
@@ -1107,9 +1215,9 @@ _4763:		push	hl
 		push	de
 		push	ix
 		push	iy
-		call	_444d
+		call	a_reti
 		ei	
-		ld	ix,(0018ah)
+		ld	ix,(base0_4)
 		ld	iy,(0033ah)
 		ld	hl,(00351h)
 		call	jphl
@@ -1154,9 +1262,9 @@ _47b7:		xor	a
 		ld	(ix+14h),a
 		ld	a,(sh_de)
 		or	020h
-		out	(0deh),a
+		out	(0deh),a	; send CONT5 interrupt to 68000
 		and	0dfh
-		out	(0deh),a
+		out	(0deh),a	; clear CONT5
 _47d9:		ld	b,001h
 		ld	a,(00339h)
 		cp	b
@@ -1202,6 +1310,7 @@ _4827:		ld	a,b
 		nop	
 		nop	
 		nop	
+
 _4832:		in	a,(0e4h)
 		ld	(ix+1bh),a
 		and	080h
@@ -1212,13 +1321,13 @@ _4841:		ld	a,(00355h)
 		dec	a
 		ld	(00355h),a
 		jr	z,_4863
-		ld	a,002h
-		ld	(00183h),a
+		ld	a,2
+		ld	(cnt_to_tick2),a
 		ret	
 
-_4850:		ld	ix,(0018ah)
+per_tick2:	ld	ix,(base0_4)
 		ld	iy,(0033ah)
-		in	a,(0e4h)
+		in	a,(0e4h)		; floppy disk status register
 		ld	(ix+1bh),a
 		and	080h
 		jr	z,_4868
@@ -2022,7 +2131,7 @@ _4f02:		ld	a,(ix+05h)
 		out	(0efh),a
 		ret	
 
-_4f18:		ld	ix,(0018ah)
+_4f18:		ld	ix,(base0_4)
 		ld	(ix+1bh),b
 		bit	6,a
 		ld	b,010h
@@ -2236,9 +2345,9 @@ _5001:		defb	000h
 _5002:		defb	000h			
 		defb	000h			
 _5004:		ld	ix,00020h
-		ld	de,(00186h)
+		ld	de,(base0)
 		add	ix,de
-		ld	(0018ch),ix
+		ld	(base0_32),ix
 		xor	a
 		ld	(003b8h),a
 		ld	(ix+14h),a
@@ -2269,16 +2378,16 @@ _5047:		defb	0c1h,00eh
 		defb	000h
 _5052:		xor	a
 		ld	(003bfh),a
-		ld	ix,(0018ch)
+		ld	ix,(base0_32)
 		ld	iy,(003a6h)
 		ld	hl,(003c0h)
 		jp	(hl)
 
-_5062:		call	_42ab
+_5062:		call	bugchk_print
 		ascii	'HdNoGo',13,10,0
 		ret	
 
-_506f:		ld	ix,(0018ch)
+_506f:		ld	ix,(base0_32)
 		ld	a,(ix+14h)
 		bit	0,a
 		jr	z,_5062
@@ -2286,7 +2395,7 @@ _506f:		ld	ix,(0018ch)
 		ld	(003a8h),a
 		ld	a,001h
 		ld	(003b8h),a
-		ld	hl,(0018ch)
+		ld	hl,(base0_32)
 		inc	hl
 		ld	a,(hl)
 		ld	(003c4h),a
@@ -2395,6 +2504,8 @@ _515e:		ld	(003c0h),hl
 		ld	(003bfh),a
 		ei	
 		ret	
+
+; TODO: $3c4 is a 24 bit 68000 pointer
 
 _5169:		ld	de,(003c5h)
 		ld	b,d
@@ -2645,7 +2756,7 @@ _535c:		in	a,(0cfh)
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
-		ld	hl,_702c+2
+		ld	hl,$702e
 		or	a
 		sbc	hl,de
 		jp	z,_5387
@@ -2785,9 +2896,9 @@ _549f:		push	bc
 		push	de
 		push	ix
 		push	iy
-		call	_444d
+		call	a_reti
 		ei	
-		ld	ix,(0018ch)
+		ld	ix,(base0_32)
 		ld	iy,(003a6h)
 		ld	hl,(003b4h)
 		call	jphl
@@ -2806,9 +2917,9 @@ _54c0:		di
 		ld	(ix+14h),a
 		ld	a,(sh_de)
 		or	020h
-		out	(0deh),a
+		out	(0deh),a	; send CONT5 interrupt to 68000
 		and	0dfh
-		out	(0deh),a
+		out	(0deh),a	; CONT5 off
 		ld	hl,_54c0
 		ld	(003b4h),hl
 		xor	a
@@ -2828,9 +2939,9 @@ _54ee:		dec	a
 		ld	(003b7h),a
 		ei	
 		ret	nz
-		ld	ix,(0018ch)
+		ld	ix,(base0_32)
 		ld	iy,(003a6h)
-		call	_42ab
+		call	bugchk_print
 		ascii	'HdTimeOut',13,10,0
 		ld	b,002h
 		jr	_5515
@@ -2948,7 +3059,7 @@ _55a4:		in	a,(0cfh)
 		nop	
 		nop	
 		nop	
-_55e1:		call	_42ab
+_55e1:		call	bugchk_print
 		ascii	'HDFail - Additional ',0
 		ld	b,a
 		ld	a,c
@@ -3150,21 +3261,23 @@ _56e4:		djnz	_56dc
 		nop	
 		nop	
 		nop	
+
 _571b:		di	
 		ld	a,(_5943)
-		ld	(_5942),a
+		ld	(reboot_on_halt),a
 		call	page_0
 		ld	hl,_5943
 		jr	_5749
 
-_572a:		ld	a,001h
-		ld	(_5942),a
-		jr	_5735
+cmd_reboot:	ld	a,001h
+		ld	(reboot_on_halt),a
+		jr	shutdown
 
-_5731:		xor	a
-		ld	(_5942),a
-_5735:		call	page_0_ei
-		ld	de,(00186h)
+cmd_halt:	xor	a
+		ld	(reboot_on_halt),a
+
+shutdown:	call	page_0_ei
+		ld	de,(base0)
 		ld	hl,00002h
 		add	hl,de
 		ld	a,(hl)
@@ -3174,7 +3287,7 @@ _5735:		call	page_0_ei
 		ld	(_5964),a
 _5749:		push	hl
 		di	
-		ld	de,(00186h)
+		ld	de,(base0)
 		ld	hl,00002h
 		add	hl,de
 		ld	a,(hl)
@@ -3194,7 +3307,7 @@ _5763:		ld	a,(bc)
 
 _576d:		ld	(hl),e
 		di	
-		ld	ix,(00196h)
+		ld	ix,(console0)
 		push	ix
 _5775:		ld	a,(ix+03h)
 		cp	(ix+02h)
@@ -3301,7 +3414,7 @@ _583f:		in	a,(0cfh)
 		bit	7,a
 		jr	nz,_583f
 _584b:		pop	hl
-		ld	a,(_5942)
+		ld	a,(reboot_on_halt)
 		or	a
 		jr	nz,_5868
 		ld	a,(hl)
@@ -3330,7 +3443,7 @@ _5897:		ld	a,(iy+00h)
 		add	a,030h
 		call	putc
 		push	de
-		ld	a,(_5942)
+		ld	a,(reboot_on_halt)
 		ld	d,a
 		call	_5632
 		pop	de
@@ -3341,18 +3454,18 @@ _58b1:		inc	c
 		ascii	']',0
 _58bb:		ld	a,004h
 		ld	(sh_de),a
-		out	(0deh),a
+		out	(0deh),a	; Halt 68000
 		ld	hl,halt_msg
 		call	print
-		ld	a,(_5942)
+		ld	a,(reboot_on_halt)
 		or	a
-		jr	nz,_58db
-		ld	ix,(00188h)
+		jr	nz,reboot
+		ld	ix,(clock0)
 		res	1,(ix+00h)
-_58d6:		call	_75c5
+_58d6:		call	clock_update
 		jr	_58d6
 
-_58db:		di	
+reboot:		di	
 		ld	a,000h
 		out	(0ffh),a
 		ld	a,0c3h
@@ -3383,7 +3496,7 @@ _58e4:		out	(0f8h),a
 		out	(083h),a
 		ld	bc,00000h
 		ld	a,00ah
-_5919:		dec	c
+_5919:		dec	c		; fairly considerable pause
 		jr	nz,_5919
 		dec	b
 		jr	nz,_5919
@@ -3403,17 +3516,17 @@ _5934:		djnz	_5934
 		out	(041h),a
 		out	(0c1h),a
 		ld	a,001h
-		out	(0f9h),a
-		jp	00000h
+		out	(0f9h),a	; enable boot ROM
+		jp	00000h		; restart the system
 
-_5942:		nop	
+reboot_on_halt:	defb	0
 _5943:		nop	
 halt_msg:	ascii	13,10,'[Z80 Control System Halted]',13,10,0
 _5964:		nop	
 _5965:		ld	ix,0003ch
-		ld	de,(00186h)
+		ld	de,(base0)
 		add	ix,de
-		ld	(0018eh),ix
+		ld	(base0_60),ix
 		xor	a
 		ld	(ix+14h),a
 		ld	(0039fh),a
@@ -3449,7 +3562,7 @@ _59bb:		jp	_59be
 _59be:		ld	b,004h
 		jp	_616e
 
-_59c3:		call	_42ab
+_59c3:		call	bugchk_print
 		ascii	'IoFake',13,10,0
 		ret	
 
@@ -3458,16 +3571,16 @@ _59d0:		ld	a,(00399h)
 		ret	z
 		xor	a
 		ld	(00399h),a
-_59d9:		ld	ix,(0018eh)
+_59d9:		ld	ix,(base0_60)
 		ld	iy,(0038dh)
 		ld	hl,(0039bh)
 		jp	(hl)
 
-_59e5:		call	_42ab
+_59e5:		call	bugchk_print
 		ascii	'IoNoGo',13,10,0
 		ret	
 
-_59f2:		ld	ix,(0018eh)
+_59f2:		ld	ix,(base0_60)
 		bit	0,(ix+14h)
 		jr	z,_59e5
 _59fc:		ld	a,001h
@@ -3492,7 +3605,7 @@ _59fc:		ld	a,001h
 		add	iy,de
 _5a28:		ld	(0038dh),iy
 		ld	(iy+01h),000h
-		ld	hl,(0018eh)
+		ld	hl,(base0_60)
 		ld	de,00004h
 		add	hl,de
 		ld	d,(hl)
@@ -3517,7 +3630,7 @@ _5a28:		ld	(0038dh),iy
 		jp	nz,_603f
 		cp	008h
 		jp	z,_5b3c
-		call	_42ab
+		call	bugchk_print
 		ascii	'IoBozo',13,10,0
 		jp	_5fed
 
@@ -3599,7 +3712,7 @@ _5af7:		in	a,(041h)
 		jp	nz,_5aa5
 		jp	_5fed
 
-_5b2e:		call	_42ab
+_5b2e:		call	bugchk_print
 		ascii	'IoFakeI',13,10,0
 		ret	
 
@@ -3750,7 +3863,7 @@ _5c8c:		ld	hl,008d9h
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
-		ld	hl,_702c+2
+		ld	hl,$702e
 		or	a
 		sbc	hl,de
 		jp	z,_5ca5
@@ -4152,8 +4265,8 @@ _5fc8:		push	bc
 		push	iy
 		xor	a
 		ld	(00399h),a
-		call	_444d
-		ld	ix,(0018eh)
+		call	a_reti
+		ld	ix,(base0_60)
 		ld	iy,(0038dh)
 		ld	hl,(00394h)
 		call	jphl
@@ -4173,9 +4286,9 @@ _5fed:		di
 		ld	(ix+14h),a
 		ld	a,(sh_de)
 		or	020h
-		out	(0deh),a
+		out	(0deh),a	; send CONT5 interrupt to 68000
 		and	0dfh
-		out	(0deh),a
+		out	(0deh),a	; turn off CONT5
 		xor	a
 		ld	(0039ah),a
 		ld	b,004h
@@ -4278,7 +4391,7 @@ _60b5:		add	hl,de
 		xor	a
 		cp	(hl)
 		jr	nz,_609f
-		call	_42ab
+		call	bugchk_print
 		ascii	'IoUnkEr - Sense: ',0
 		ld	a,b
 		call	ring_puthex_spc
@@ -4481,6 +4594,7 @@ _622e:		defb	000h
 		defb	000h
 		defb	000h
 		defb	000h
+
 _626a:		ld	hl,_634f
 		call	_7760
 		ld	hl,_645a
@@ -4498,51 +4612,60 @@ _6286:		djnz	_6286
 		sbc	a,a
 		ld	(00338h),a
 		ld	hl,model_2_msg
-		ld	a,0cdh
-		jr	nz,_62a4
+		ld	a,0cdh		; opcode for CALL
+		jr	nz,is_model_2
 		ld	hl,model_6000_16_msg
 		ld	a,0c7h
 		out	(0f1h),a
 		ld	a,001h
 		out	(0f1h),a
-		jr	_62a7
+		jr	is_model_16
 
-_62a4:		ld	(_41e9),a
-_62a7:		ld	de,0f840h
-		ld	bc,0000fh
+; cmd dispatch cannot be disabled on the Model II.
+is_model_2:	ld	(_41e9),a
+
+is_model_16:	ld	de,video_RAM + 64 ; upper right of video display
+		ld	bc,15
 		ldir	
-		in	a,(0fch)
-		ld	ix,_6c75
-		ld	de,(00186h)
-		ld	bc,00004h
+
+		in	a,(0fch)	; clear out keyboard scancode
+
+; Map all the 68000 DCB zero page offsets to addresses
+
+		ld	ix,dcb_addrs
+		ld	de,(base0)
+		ld	bc,4
 		ld	a,00dh
-_62be:		ld	l,(ix+02h)
+dcb68map:	ld	l,(ix+02h)
 		ld	h,(ix+03h)
 		add	hl,de
 		ld	(ix+02h),l
 		ld	(ix+03h),h
 		add	ix,bc
 		dec	a
-		jr	nz,_62be
+		jr	nz,dcb68map
+
+; Initializing the input queue.
+
 		ld	ix,00368h
 		add	ix,de
-		ld	(00192h),ix
+		ld	(inputq0),ix
 		xor	a
 		ld	(ix+00h),a
 		ld	(ix+01h),a
 		ld	(ix+02h),a
-		ld	(008d5h),a
-		ld	(008d7h),a
-		ld	(008d6h),a
-		ld	hl,03602h
-		ld	(008d3h),hl
-		ld	b,006h
-		ld	hl,03600h
-_62f8:		ld	(hl),a
+		ld	(iq_writecnt),a
+		ld	(iq_readblk),a
+		ld	(iq_writeblk),a
+		ld	hl,input_queue + iq_pairs
+		ld	(iq_writep),hl
+		ld	b,iq_blk_num
+		ld	hl,input_queue
+emptyiq:	ld	(hl),a		; empty all input queue blocks
 		inc	h
-		djnz	_62f8
+		djnz	emptyiq
 		ld	de,002e6h
-		ld	hl,(00186h)
+		ld	hl,(base0)
 		add	hl,de
 		ex	de,hl
 		ld	a,00dh
@@ -4555,13 +4678,15 @@ _6306:		ld	bc,0000ah
 		ld	de,00009h
 		add	hl,de
 		ld	(hl),007h
+
+; Detect if devices 4 through 12 are present
 		in	a,(079h)
 		ld	d,a
 		in	a,(069h)
 		or	d
 		ret	nz
-		ld	a,0c9h
-		ld	(_6844),a
+		ld	a,0c9h		; opcode for RET
+		ld	(_6844),a	; disable init for devices 4 .. 12
 		ret	
 
 model_2_msg:	ascii	'[Model II]     '
@@ -4726,6 +4851,7 @@ _646e:		defb	0f7h,018h
 		defb	0f7h,020h
 		defb	000h
 		nop	
+
 _6486:		exx	
 		ld	bc,001f6h
 		jp	_6491
@@ -4738,11 +4864,11 @@ _6491:		ex	af,af'
 		jr	z,_64a7
 _6498:		dec	c
 		dec	c
-		in	a,(c)
-		call	_66fa
+		in	a,(c)		; SIO data
+		call	dev_q_input
 		inc	c
 		inc	c
-		in	a,(c)
+		in	a,(c)		; SIO status
 		and	001h
 		jr	nz,_6498
 _64a7:		ex	af,af'
@@ -4771,7 +4897,7 @@ _64b7:		in	a,(c)
 _64ca:		dec	c
 		dec	c
 		in	a,(c)
-		call	_66fa
+		call	dev_q_input
 		pop	bc
 		ld	a,030h
 		out	(c),a
@@ -4780,13 +4906,13 @@ _64ca:		dec	c
 _64d8:		exx	
 		push	iy
 		ld	bc,001f6h
-		ld	iy,_6ba7
+		ld	iy,sio_A_dcb
 		jr	_64ee
 
 _64e4:		exx	
 		push	iy
 		ld	bc,002f7h
-		ld	iy,_6bb7
+		ld	iy,sio_B_dcb
 _64ee:		ex	af,af'
 		ld	a,010h
 		out	(c),a
@@ -4807,55 +4933,60 @@ _6509:		bit	7,a
 		dec	c
 		dec	c
 		in	a,(c)
-		call	_66fa
+		call	dev_q_input
 _6516:		ld	a,e
 		cp	(iy+02h)
 		ld	(iy+02h),a
 		jr	z,_6524
 		set	7,b
-		call	_66fa
+		call	dev_q_input
 _6524:		ex	af,af'
 		exx	
 		pop	iy
 		ei	
 		reti	
 
-_652b:		exx	
+sio_a_send_intr:
+		exx	
 		push	iy
 		ld	bc,001f6h
-		ld	iy,_6ba7
-		jr	_6541
+		ld	iy,sio_A_dcb
+		jr	sio_send
 
-_6537:		exx	
+sio_b_send_intr:
+		exx	
 		push	iy
 		ld	bc,002f7h
-		ld	iy,_6bb7
-_6541:		ex	af,af'
-		call	_6552
+		ld	iy,sio_B_dcb
+sio_send:	ex	af,af'
+		call	sio_xmit
 		ex	af,af'
 		exx	
 		pop	iy
 		ei	
 		reti	
 
-_654c:		ld	b,(iy+05h)
-		ld	c,(iy+06h)
-_6552:		in	a,(c)
+; With IY pointing to a DCB for a serial I/O device, transmit a character
+; from its buffer.
+
+dcb_sio_xmit:	ld	b,(iy + d_num)
+		ld	c,(iy + d_port)
+sio_xmit:	in	a,(c)		; SIO command/status
 		and	004h
 		ret	z
-		call	_6816
+		call	dcb_get_char
 		jr	z,_6565
 		dec	c
 		dec	c
-		out	(c),a
+		out	(c),a		; SIO data
 		inc	c
 		inc	c
-		jp	nc,_6552
+		jp	nc,sio_xmit
 _6565:		ld	a,028h
-		out	(c),a
+		out	(c),a		; SIO command/status
 		ret	
 
-		jr	_6552
+		jr	sio_xmit	; TODO: why unreferenced?
 
 _656c:		exx	
 		push	iy
@@ -4910,7 +5041,7 @@ _65d4:		exx
 		ld	bc,00c5dh
 		ld	iy,_6c57
 _65de:		ex	af,af'
-		call	_444d
+		call	a_reti
 _65e2:		in	a,(c)
 		ld	d,a
 		and	(iy+0fh)
@@ -4927,13 +5058,13 @@ _65f0:		push	af
 		pop	af
 		rrca	
 		jp	nc,_65e2
-		call	_6816
+		call	dcb_get_char
 		jr	z,_6607
 		dec	c
 		out	(c),a
 		inc	c
 		jp	nc,_65e2
-_6607:		ld	hl,00080h
+_6607:		ld	hl,port_shadow
 		ld	e,c
 		ld	d,000h
 		add	hl,de
@@ -4956,116 +5087,143 @@ _661b:		dec	c
 		ld	b,a
 		push	bc
 		ld	b,000h
-		ld	hl,00080h
+		ld	hl,port_shadow
 		add	hl,bc
 		ld	a,(hl)
 		or	010h
 		out	(c),a
 		pop	bc
 _6636:		ld	a,e
-		call	_66fa
+		call	dev_q_input
 		ld	b,d
 		ret	
 
-_663c:		ld	e,a
-		or	a
-		jp	p,_6655
-		sub	0a1h
-		cp	006h
-		ld	hl,_6685
-		jr	c,_6667
-		sub	01eh
-		cp	002h
-		ld	hl,_668a+1
-		jr	c,_6667
-		jr	_666c
+; Convert keyboard scancode in A into a character to input in A.
 
-_6655:		jr	z,_6672
+scan2char:	ld	e,a
+		or	a
+		jp	p,scanlow
+		sub	0a1h		; ctl-1 scancode
+		cp	6
+		ld	hl,_6685
+		jr	c,xlate_scan
+		sub	01eh		; ctl-? scancode
+		cp	002h
+		ld	hl,_668b
+		jr	c,xlate_scan
+		jr	retkey
+
+scanlow:	jr	z,hold_key
 		sub	01ch
 		cp	004h
-		jr	nc,_666c
+		jr	nc,retkey
 		push	af
-		ld	a,01bh
-		call	_66fa
+		ld	a,01bh		; send ESC character
+		call	dev_q_input
 		pop	af
-		ld	hl,_6681
-_6667:		ld	e,a
-		ld	d,000h
+		ld	hl,arrow_esc	; and then the translated arrow key
+xlate_scan:	ld	e,a
+		ld	d,0
 		add	hl,de
 		ld	e,(hl)
-_666c:		xor	a
-		ld	(_6680),a
+retkey:		xor	a
+		ld	(hold),a
 		ld	a,e
 		ret	
 
-_6672:		ld	a,(_6680)
+; "HOLD" key alternates between outputting ctrl-S and ctrl-Q, the standard
+; flow control characters.
+
+hold_key:	ld	a,(hold)
 		cpl	
-		ld	(_6680),a
+		ld	(hold),a
 		or	a
-		ld	a,011h
+		ld	a,011h		; ctl-S
 		ret	z
-		ld	a,013h
+		ld	a,013h		; ctl-Q
 		ret	
 
-_6680:		nop	
-; 'DCAB' but may not be meaningful.
-_6681:		defb	044h,043h,041h,042h
-_6685:		defb	07ch,060h,01dh,01eh,01fh
-_668a:		defb	01ch,05ch
+hold:		byte	0	
+
+; Translate arrow key scancodes $1C .. $1F (left, right, up, down)
+
+arrow_esc:	byte	'D'
+		byte	'C'
+		byte	'A'
+		byte	'B'
+
+; Translation table for scancodes $A1 .. $A6
+; Which are: ctl-1 ctl-" ctl-3 ctl-4 ctl-5 ctl-7
+
+_6685:		byte	'|'
+		byte	'`'
+		byte	$1d
+		byte	$1e
+		byte	$1f
+		byte	$1c
+
+_668b:		defb	05ch
 		nop	
-_668d:		ex	af,af'
+
+key_intr:	ex	af,af'
 		in	a,(0ffh)
-		and	080h
-		jr	z,_66ba
-		in	a,(0fch)
-		call	_6f99
+		and	$80
+		jr	z,no_key
+		in	a,(0fch)	; get key scancode and clear key intr
+		call	_6f99		; weird console fiddle
 		cp	0abh
-		jr	z,_66ba
-		cp	0beh
-		jr	nz,_66b0
+		jr	z,no_key
+		cp	0beh		; CTL-,
+		jr	nz,no_spec_key
 		ld	a,(_6fd4)
 		xor	001h
-		ld	(_6fd4),a
-		jr	z,_66ba
+		ld	(_6fd4),a	; toggle cursor blink?
+		jr	z,no_key
 		call	_6fce
-		jr	_66ba
+		jr	no_key
 
-_66b0:		exx	
-		ld	b,000h
-		call	_663c
-		call	_66fa
+no_spec_key:	exx	
+		ld	b,dev_console
+		call	scan2char
+		call	dev_q_input
 		exx	
-_66ba:		ex	af,af'
+no_key:		ex	af,af'
 		ei	
 		reti	
 
-_66be:		ex	af,af'
+printer_intr:	ex	af,af'
 		in	a,(0e0h)
 		and	0e0h
-		jr	nz,_66d2
+		jr	nz,printer_busy
 		exx	
 		push	iy
-		ld	iy,_6bc7
-		call	_66db
+		ld	iy,printer_dcb
+		call	printer_output
 		pop	iy
 		exx	
-_66d2:		ex	af,af'
+printer_busy:	ex	af,af'
 		ei	
 		reti	
 
-_66d6:		in	a,(0e0h)
+printer_write:	in	a,(0e0h)
 		and	0e0h
 		ret	nz
-_66db:		ld	b,003h
-		call	_6816
+
+printer_output:	ld	b,dev_printer
+		call	dcb_get_char
 		ret	z
-		out	(0e1h),a
+		out	(0e1h),a	; send data to printer
 		ret	
 
 		and	07fh		; TODO!
-_66e6:		ld	c,(iy+06h)
-		ld	b,000h
-		ld	hl,00080h
+
+; Odd routine in that it send 256 bytes out to a DCB port.  But the data
+; sent seems to come from nowhere.  Perhaps it is unimportant.  Though it
+; almost feels like they meant to set B=1 before the outi.
+
+_66e6:		ld	c,(iy + d_port)
+		ld	b,0
+		ld	hl,port_shadow
 		add	hl,bc
 		di	
 		set	0,(iy+0fh)
@@ -5074,131 +5232,153 @@ _66e6:		ld	c,(iy+06h)
 		ei	
 		ret	
 
-_66fa:		ld	hl,(008d3h)
-		ld	(hl),b
+; Add character A from device B to global input queue.
+; High bit of B can be set.  In that character it means A is some kind
+; of device status information.  I think the RS-232 status lines in some
+; cases.
+
+; TODO - $8d3 is pointer to some kind of device output queue buffer.
+; First byte is the number of bytes in the buffer (or first block).
+; Second byte seems to indicate ctl-Q has gotten in there.
+; About 6 * 256 in size, I suspect.
+
+dev_q_input:	ld	hl,(iq_writep)
+		ld	(hl),b		; device number
 		inc	l
-		ld	(hl),a
+		ld	(hl),a		; character to send
 		inc	l
-		jr	z,_671e
-		cp	013h
-		jr	z,_670e
-		ld	(008d3h),hl
-		ld	l,000h
-		inc	(hl)
+		jr	z,blkend	; reached end of current block?
+		cp	013h		; ctl-Q
+		jr	z,finish_blk
+		ld	(iq_writep),hl
+		ld	l,iq_pair_cnt
+		inc	(hl)		; count one more pair
 		ret	
 
-_670e:		ld	a,(008d5h)
-		cp	006h
-		jr	nz,_671e
-		ld	(008d3h),hl
-		ld	l,001h
-		ld	(hl),l
+finish_blk:	ld	a,(iq_writecnt)
+		cp	iq_blk_num
+		jr	nz,blkend
+		ld	(iq_writep),hl
+		ld	l,iq_flag
+		ld	(hl),l		; queue block for delivery next chance you get
 		dec	l
-		inc	(hl)
+		inc	(hl)		; count one more pair
 		ret	
 
-_671e:		ld	l,000h
-		inc	(hl)
-_6721:		ld	hl,008d5h
-		inc	(hl)
+blkend:		ld	l,iq_pair_cnt
+		inc	(hl)		; count one more pair
+q_input_blk:	ld	hl,iq_writecnt
+		inc	(hl)		; increment block sequence number
 		inc	hl
-		ld	a,(hl)
+		ld	a,(hl)		; get current write block #
 		inc	a
-		cp	006h
-		jr	nz,_672d
+		cp	iq_blk_num
+		jr	nz,noblkwrap
 		xor	a
-_672d:		ld	(hl),a
-		ld	hl,03600h
+noblkwrap:	ld	(hl),a		; save current write block # mod 6
+		ld	hl,input_queue
 		add	a,h
 		ld	h,a
-		ld	(hl),000h
+		ld	(hl),0		; block has 0 pairs stored
 		inc	hl
-		ld	(hl),000h
+		ld	(hl),0		; and flag is 0 (don't queue it)
 		inc	hl
-		ld	(008d3h),hl
-		ret	
+		ld	(iq_writep),hl	; save pointer to current block
+		ret
 
-_673d:		di	
-		ld	a,(iy+04h)
+; Unclear: 68000 is flushing input data and asking for an interrupt.
+; Perhaps this is after the 68K has read all the data?
+
+uh_dev_flush:	di	
+		ld	a,(iy + d_cnt)
 		or	a
-		jr	z,_677a
-		sub	(ix+05h)
+		jr	z,no_data
+		sub	(ix+05h)	; bytes available - bytes requested
 		neg	
-		ld	(ix+05h),a
+		ld	(ix+05h),a	; bytes requested - bytes available
 		xor	a
-		ld	(iy+04h),a
-		ld	b,(iy+05h)
+		ld	(iy + d_cnt),a	; all bytes in buffer are consumed
+		ld	b,(iy + d_num)
 		ld	a,b
-		cp	004h
-		jr	c,_676b
-		ld	c,(iy+06h)
-		ld	hl,00080h
-		ld	b,000h
+		cp	4
+		jr	c,dev0123
+		ld	c,(iy + d_port)	; I/O port # for these devices
+		ld	hl,port_shadow
+		ld	b,0
 		add	hl,bc
 		ld	a,(hl)
 		and	0feh
 		ld	(hl),a
 		out	(c),a
 		res	0,(iy+0fh)
-_676b:		ld	a,(ix+04h)
+dev0123:	ld	a,(ix+04h)
 		or	010h
 		and	0feh
 		ld	(ix+04h),a
 		bit	4,a
-		call	nz,_6b8c
-_677a:		ei	
+		call	nz,send_cont6	; uh, that "or $10" means we always call
+no_data:	ei	
 		ret	
 
-_677c:		ld	b,00dh
-		ld	hl,_6c73
+; Two things done here.  One is to notify the 68000 if we have and devices that
+; have empty data buffers (so it can send more if it wants?)
+; The second is to pass device input data up to the 68000.
+
+char_io_update:	ld	b,00dh
+		ld	hl,dcb_empty_end-1
 		xor	a
 _6782:		or	(hl)
-		jr	z,_67a2
+		jr	z,dcb_has_data
 		ld	(hl),000h
 		push	bc
 		push	hl
 		ld	a,b
 		dec	a
-		call	_6897
+		call	get_dcb
 		di	
 		ld	a,(ix+04h)
 		or	010h
 		and	0feh
 		ld	(ix+04h),a
 		bit	4,a
-		call	nz,_6b8c
+		call	nz,send_cont6	; tell 68000 we have space for data?
 		ei	
 		pop	hl
 		pop	bc
 		xor	a
-_67a2:		dec	hl
+dcb_has_data:	dec	hl
 		djnz	_6782
-		ld	a,(008d5h)
+
+		ld	a,(iq_writecnt)
 		or	a
-		jr	nz,_67bb
+		jr	nz,have_input
+
+		; We might have a partially written block of data that we've
+		; been asked to send anyways.
 		di	
-		ld	hl,(008d3h)
-		ld	l,001h
+		ld	hl,(iq_writep)
+		ld	l,iq_flag
 		ld	a,(hl)
 		or	a
-		jr	nz,_67b7
+		jr	nz,flushed_block	
 		ei	
 		ret	
 
-_67b7:		call	_6721
+flushed_block:	call	q_input_blk
 		ei	
-_67bb:		ld	a,(008d7h)
-		ld	hl,03600h
+have_input:	ld	a,(iq_readblk)
+		ld	hl,input_queue
 		add	a,h
 		ld	h,a
-		ld	c,(hl)
+		ld	c,(hl)		; number of pairs in block
 		inc	hl
-		inc	hl
-		ld	de,(00192h)
+		inc	hl		; HL points to pairs
+; Feels like we're figuring out how much space the 68000 has in its input buffer.
+		ld	de,(inputq0)
 		ld	a,(de)
 		dec	c
 		add	a,c
-		ld	(008d8h),a
+		ld	(iq_tmp),a
 		push	af
 		jr	nc,_67d8
 		ld	b,a
@@ -5210,7 +5390,7 @@ _67d8:		ld	a,(de)
 _67d9:		add	a,002h
 		push	hl
 		ld	l,a
-		ld	h,000h
+		ld	h,0
 		rl	h
 		add	hl,hl
 		add	hl,de
@@ -5220,7 +5400,7 @@ _67d9:		add	a,002h
 		ld	b,000h
 		sla	c
 		rl	b
-		ldir	
+		ldir			; copying input data to 68000 buffer
 		pop	de
 		pop	af
 		jr	nc,_67f7
@@ -5229,49 +5409,60 @@ _67d9:		add	a,002h
 		push	af
 		jr	_67d9
 
-_67f7:		ld	a,(008d8h)
-		inc	a
+_67f7:		ld	a,(iq_tmp)
+		inc	a		; number of pairs in block
 		ld	(de),a
-		ld	hl,008d5h
-		dec	(hl)
-		ld	hl,008d7h
+		ld	hl,iq_writecnt
+		dec	(hl)		; one less block in queue
+		ld	hl,iq_readblk
 		ld	a,(hl)
 		inc	a
-		cp	006h
+		cp	iq_blk_num
 		jr	nz,_680a
 		xor	a
-_680a:		ld	(hl),a
+_680a:		ld	(hl),a		; and moved to next block to read
 		ex	de,hl
 		inc	hl
 		inc	hl
 		bit	4,(hl)
 		ret	nz
 		set	4,(hl)
-		jp	_6b8c
+		jp	send_cont6	; notify 68000
 
-_6816:		ld	a,(iy+04h)
+; Get next buffered byte from a DCB at IY and B as device number.
+; On return:
+;	Zero set:	byte in A
+;	Zero clear:	no data available
+;	Carry clear:	buffer still has data
+;	Carry set:	buffer now empty
+
+dcb_get_char:	ld	a,(iy + d_cnt)
 		or	a
-		ret	z
-		ld	h,(iy+08h)
-		ld	l,(iy+07h)
-		ld	a,(hl)
+		ret	z		; no nothing if no data queued
+		ld	h,(iy + d_bufp + 1)
+		ld	l,(iy + d_bufp)	; data buffer pointer
+		ld	a,(hl)		; get byte
 		inc	hl
-		ld	(iy+08h),h
-		ld	(iy+07h),l
-		dec	(iy+04h)
+		ld	(iy + d_bufp + 1),h
+		ld	(iy + d_bufp),l	; update buffer pointer
+		dec	(iy + d_cnt)	; 1 less byte in buffer
 		ret	nz
 		ld	e,b
-		ld	hl,_6c67
-		ld	d,000h
+		ld	hl,dcb_empty
+		ld	d,0
 		adc	hl,de
-		ld	(hl),001h
+		ld	(hl),1
 		scf	
 		ret	
 
-_6839:		di	
-		ld	a,(008d3h)
-		cp	002h
-		call	nz,_6721
+; Called periodically to make any queued character input available for
+; sending to the 68000.
+
+flush_input_queue:
+		di	
+		ld	a,(iq_writep)
+		cp	iq_pairs
+		call	nz,q_input_blk	; call if current input block had data
 		ei	
 		ret	
 
@@ -5292,32 +5483,38 @@ _684a:		ld	l,(ix+00h)
 		djnz	_684a
 		ret	
 
-_6869:		ld	a,c
-		and	00fh
-		call	_6897
+; If bit 1 of B == 0 then 68000 has (urgent?) data to send to a device.
+; Otherwise it seems to flush data queued the the device or something.
+
+cmd_urg:	ld	a,c
+		and	$F
+		call	get_dcb
 		bit	1,b
-		jp	nz,_673d
-		ld	l,(iy+09h)
-		ld	(iy+07h),l
-		ld	h,(iy+0ah)
-		ld	(iy+08h),h
-		ld	c,(ix+05h)
-		ld	b,000h
-		call	copy_from_68k
+		jp	nz,uh_dev_flush
+		ld	l,(iy + d_buf)
+		ld	(iy + d_bufp),l
+		ld	h,(iy + d_buf + 1)
+		ld	(iy + d_bufp + 1),h
+		ld	c,(ix+05h)	; 68000 DCB + 5 must be byte count
+		ld	b,0
+		call	copy_from_68k	; 68000 DCB + 0 must be data pointer
 		di	
-		ld	(iy+04h),c
+		ld	(iy + d_cnt),c
 		ld	l,(iy+0bh)
 		ld	h,(iy+0ch)
 		call	jphl
 		ei	
 		ret	
 
-_6897:		push	de
-		ld	hl,_6c75
+; Given the device number in A return IY pointing to Z-80 DCB and 0:IX
+; to the 68000 DCB for the device.
+
+get_dcb:	push	de
+		ld	hl,dcb_addrs
 		rlca	
 		rlca	
 		ld	e,a
-		ld	d,000h
+		ld	d,0
 		add	hl,de
 		ld	e,(hl)
 		inc	hl
@@ -5335,7 +5532,7 @@ _6897:		push	de
 
 _68b0:		ld	a,c
 		and	00fh
-		call	_6897
+		call	get_dcb
 		ld	l,(iy+0dh)
 		ld	h,(iy+0eh)
 		jp	(hl)
@@ -5429,7 +5626,7 @@ _695a:		or	004h
 _6962:		ld	e,a
 		ld	d,b
 		di	
-		ld	c,(iy+06h)
+		ld	c,(iy + d_port)
 		ld	a,004h
 		out	(c),a
 		out	(c),e
@@ -5451,21 +5648,21 @@ _6962:		ld	e,a
 		ld	a,(_69dd)
 		ld	b,a
 		ld	(iy+03h),l
-		ld	a,(iy+05h)
+		ld	a,(iy + d_num)
 		cp	002h
 		jr	z,_69a8
 		ld	c,0f0h
-		call	_69df
+		call	out_c_db
 		ld	c,0f1h
 		ld	a,(00338h)
 		or	a
-		call	nz,_69df
+		call	nz,out_c_db
 		jr	_69ad
 
 _69a8:		ld	c,0f2h
-		call	_69df
+		call	out_c_db
 _69ad:		ei	
-		ld	c,(iy+06h)
+		ld	c,(iy + d_port)
 		ld	a,(iy+02h)
 		and	0f8h
 		in	e,(c)
@@ -5482,15 +5679,16 @@ _69ca:		di
 		cp	(iy+02h)
 		jr	z,_69db
 		ld	(iy+02h),a
-		ld	b,(iy+05h)
+		ld	b,(iy + d_num)
 		set	7,b
-		call	_66fa
+		call	dev_q_input
 _69db:		ei	
 		ret	
 
 _69dd:		defb	000h
 _69de:		defb	047h
-_69df:		out	(c),d
+
+out_c_db:	out	(c),d
 		out	(c),b
 		ret	
 
@@ -5524,8 +5722,9 @@ _69f5:		defb	000h,000h,000h
 		defb	00dh,040h,047h
 		defb	000h,000h,000h
 		defb	000h,000h,000h
+
 _6a25:		push	bc
-		ld	c,(iy+06h)
+		ld	c,(iy + d_port)
 		in	b,(c)
 		ld	a,(iy+02h)
 		and	0f8h
@@ -5537,10 +5736,10 @@ _6a38:		cp	(iy+02h)
 		jr	z,_6a4c
 		ld	(iy+02h),a
 		di	
-		ld	b,(iy+05h)
+		ld	b,(iy + d_num)
 		set	7,b
 		push	hl
-		call	_66fa
+		call	dev_q_input
 		pop	hl
 		ei	
 _6a4c:		pop	bc
@@ -5604,7 +5803,7 @@ _6ab4:		ld	h,a
 		ld	(iy+01h),c
 		ld	(iy+00h),e
 		ex	de,hl
-		ld	c,(iy+06h)
+		ld	c,(iy + d_port)
 		di	
 		ld	a,040h
 		out	(c),a
@@ -5642,7 +5841,7 @@ _6ab4:		ld	h,a
 		ei	
 		ret	
 
-_6af7:		ld	c,(iy+05h)
+_6af7:		ld	c,(iy + d_num)
 		ld	a,(iy+03h)
 		and	00fh
 		cp	011h
@@ -5695,6 +5894,7 @@ _6b2c:		word	00000h
 		word	0000dh
 		word	00000h
 		word	00000h
+
 _6b4c:		defb	073h,036h,070h
 		defb	073h,076h,071h
 		defb	073h,0b6h,072h
@@ -5705,190 +5905,182 @@ _6b4c:		defb	073h,036h,070h
 		defb	053h,076h,051h
 		defb	053h,0b6h,052h
 
-_6b67:		ld	a,(_6b9c)
+console_write:	ld	a,(console_dcb + d_cnt)
 		or	a
 		ret	z
-		ld	b,000h
-		call	_6816
+		ld	b,dev_console
+		call	dcb_get_char
 		ei	
 		call	nz,putc
 		ret	
 
-_6b76:		di	
-		ld	a,(_6bcb)
+printer_update:	di	
+		ld	a,(printer_dcb + d_cnt)
 		or	a
-		jr	z,_6b8a
+		jr	z,no_print
 		in	a,(0e0h)
 		and	0e0h
-		jr	nz,_6b8a
-		ld	iy,_6bc7
-		call	_66db
-_6b8a:		ei	
+		jr	nz,no_print
+		ld	iy,printer_dcb
+		call	printer_output
+no_print:	ei	
 		ret	
 
-_6b8c:		ld	a,(sh_de)
+send_cont6:	ld	a,(sh_de)
 		or	040h
-		out	(0deh),a
+		out	(0deh),a	; send CONT6 interrupt to 68000
 		and	0bfh
-		out	(0deh),a
+		out	(0deh),a	; turn off CONT6
 		ret	
 
-; as in 1.3.5 version there are bunches of addresses here...
+; Device Control Blocks for all the character devices.  As opposed to
+; block devices such as floppy and hard drives.
 
-_6b98:		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-_6b9c:		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	018h			
-		defb	003h			
+console_dcb:	defb	000h		; +0	
+		defb	000h		; +1	
+		defb	000h		; +2	
+		defb	000h		; +3	
+		defb	000h		; +4
+		defb	0		; +5 device 0
+		defb	000h		; +6
+		word	0		; +7
+		word	dbuf_console	; +9	XXX console
 
-		word	_6b67
-		word	_43fc
+		word	console_write	; +11
+		word	a_ret		; +13
 
-_6ba7:		defb	000h			
+sio_A_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	001h			
-		defb	0f6h			
-		defb	000h			
-		defb	000h			
-		defb	098h			
-		defb	001h			
+		defb	1		; device 1	
+		defb	$f6		; SIO Channel A command/status port
+		word	0
+		word	dbuf_sio_A
 
-		word	_654c
+		word	dcb_sio_xmit
 		word	_68bd
 
 		defb	000h			
-_6bb7:		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	002h			
-		defb	0f7h			
-		defb	000h			
-		defb	000h			
-		defb	0b8h			
-		defb	001h			
 
-		word	_654c
+sio_B_dcb:	defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	2		; device 2			
+		defb	$f7		; SIO Channel B command/status port
+		word	0
+		word	dbuf_sio_B
+
+		word	dcb_sio_xmit
 		word	_68bd
 
 		defb	000h			
-_6bc7:		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-_6bcb:		defb	000h			
-		defb	003h			
-		defb	000h			
-		defb	000h			
-		defb	000h			
-		defb	0f8h			
-		defb	002h			
 
-		word	_66d6
-		word	_43fc
+printer_dcb:	defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	000h			
+		defb	3		; device 3	
+		defb	000h			
+		word	0		; printer data buffer pointer
+		word	dbuf_printer
+
+		word	printer_write
+		word	a_ret
 
 		defb	000h			
+
+; For these devices offset 6 has an I/O port number.  So I think they all
+; represent very similar things; perhaps some multi-port serial board?
+
 _6bd7:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	004h			
+		defb	4		; device 4			
 		defb	079h			
-		defb	000h			
-		defb	000h			
-		defb	0d8h			
-		defb	001h			
+		word	0
+		word	dbuf_dev_4
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6be7:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	005h			
-		defb	07bh			
-		defb	000h			
-		defb	000h			
-		defb	0f8h			
-		defb	001h			
+		defb	5		; device 5
+		defb	07bh		; I/O port
+		word	0
+		word	dbuf_dev_5
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6bf7:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	006h			
-		defb	07dh			
-		defb	000h			
-		defb	000h			
-		defb	018h			
-		defb	002h			
+		defb	6		; device 6
+		defb	07dh		; I/O port
+		word	0
+		word	dbuf_dev_6
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6c07:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	007h			
-		defb	069h			
-		defb	000h			
-		defb	000h			
-		defb	038h			
-		defb	002h			
+		defb	7		; device 7
+		defb	069h		; I/O port
+		word	0
+		word	dbuf_dev_7
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6c17:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	008h			
-		defb	06bh			
-		defb	000h			
-		defb	000h			
-		defb	058h			
-		defb	002h			
+		defb	8		; device 8
+		defb	06bh		; I/O port
+		word	0
+		word	dbuf_dev_8
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6c27:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	009h			
-		defb	06dh			
-		defb	000h			
-		defb	000h			
-		defb	078h			
-		defb	002h			
+		defb	9		; device 9
+		defb	06dh		; I/O port
+		word	0
+		word	dbuf_dev_9
 
 		word	_66e6
 		word	_6a4e
@@ -5899,62 +6091,67 @@ _6c37:		defb	000h
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	00ah			
-		defb	059h			
-		defb	000h			
-		defb	000h			
-		defb	098h			
-		defb	002h			
+		defb	10		; device 10
+		defb	059h		; I/O port
+		word	0
+		word	dbuf_dev_10
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6c47:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	00bh			
-		defb	05bh			
-		defb	000h			
-		defb	000h			
-		defb	0b8h			
-		defb	002h			
+		defb	11		; device 11
+		defb	05bh		; I/O port
+		word	0
+		word	dbuf_dev_11
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
+
 _6c57:		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
-		defb	00ch			
-		defb	05dh			
-		defb	000h			
-		defb	000h			
-		defb	0d8h			
-		defb	002h			
+		defb	12		; device 12
+		defb	05dh		; I/O port
+		word	0
+		word	dbuf_dev_12
 
 		word	_66e6
 		word	_6a4e
 
 		defb	000h			
-_6c67:		defb	000h,000h,000h,000h,000h,000h,000h,000h,000h,000h,000h,000h
-_6c73:		defb	000h,001h
 
-_6c75:		word	_6b98
-_6c77:		word	$02e6
+; Flags set indicating which device control blocks have empty data buffers.
+dcb_empty:	defb	0,0,0,0,0,0,0,0,0,0,0,0,0
+dcb_empty_end:
 
-		word	_6ba7
+		defb	001h
+
+; Table of DCB address pairs, the first the DCB in Z-80 memory and the
+; second the address of associated device data in 68000 page 0 memory.
+; Which is an offset off (base0) initialized at the start (and it only does 13).
+; TODO: Add to map of the base0 68000 memory area.
+
+dcb_addrs:	word	console_dcb
+_6c77:		word	$2e6
+
+		word	sio_A_dcb
 		word	$2f0
 
-		word	_6bb7
+		word	sio_B_dcb
 		word	$2fa
 
-		word	_6bc7
+		word	printer_dcb
 		word	$304
 
 _6c85:		word	_6bd7
@@ -6014,29 +6211,29 @@ _6c85:		word	_6bd7
 		word	0
 		word	0
 
-_6cd1:		ld	a,(_6b9c)
+_6cd1:		ld	a,(console_dcb + d_cnt)
 		or	a
 		ret	z
-		ld	iy,_6b98
-		ld	b,000h
+		ld	iy,console_dcb
+		ld	b,dev_console
 _6cdc:		di	
-		call	_6816
+		call	dcb_get_char
 		ei	
 		ret	z
 		call	putc
 		ret	c
 		jp	_6cdc
 
-_6ce9:		ld	de,(00186h)
+_6ce9:		ld	de,(base0)
 		ld	hl,002d4h
 		add	hl,de
-		ld	(00194h),hl
+		ld	(base0_724),hl
 		xor	a
 		ld	(_6f4e),a
 		ret	
 
 _6cf9:		call	page_0_ei
-		ld	ix,(00194h)
+		ld	ix,(base0_724)
 		bit	0,(ix+0ch)
 		jp	z,_6d92
 		ld	a,(ix+0ch)
@@ -6100,11 +6297,11 @@ _6d82:		xor	a
 		ld	a,c
 		or	020h
 		ld	(ix+0ch),a
-		call	_6b8c
+		call	send_cont6
 		ei	
 		ret	
 
-_6d92:		call	_42ab
+_6d92:		call	bugchk_print
 		ascii	'SrNoGo',13,10,0
 		jr	_6d82
 
@@ -6128,8 +6325,10 @@ _6dbc:		pop	hl
 
 _6dc0:		call	panic
 		ascii	'SRBADDR',13,10,0
+
 _6dcd:		call	panic
 		ascii	'SRXCSR',13,10,0
+
 _6dd9:		ld	hl,(vram_pos)
 		ld	a,h
 		or	0f8h
@@ -6260,7 +6459,7 @@ _6ee4:		ld	(ix+0fh),000h
 		or	020h
 		di	
 		ld	(ix+0ch),a
-		call	_6b8c
+		call	send_cont6
 		ei	
 		ret	
 
@@ -6338,17 +6537,17 @@ _6f55:		nop
 _6f56:		nop	
 		nop	
 
-_6f58:		ld	ix,00058h
-		ld	de,(00186h)
+console_init:	ld	ix,$58
+		ld	de,(base0)
 		add	ix,de
-		ld	(00196h),ix
+		ld	(console0),ix
 		ld	hl,conout_start
 		ld	(console_vec),hl
 		xor	a
 		ld	(console_flags),a
-		ld	a,000h
-		ld	(00120h),a
-		out	(0a0h),a
+		ld	a,0
+		ld	(sh_a0),a
+		out	(0a0h),a		; speaker off
 		call	printimm
 		ascii	12,0
 		ret	
@@ -6460,19 +6659,19 @@ char_tab:	ld	a,l
 		ld	l,a
 		jp	_7067
 
-char_bell:	ld	a,(00120h)
-		and	001h
-		jp	nz,char_done_noxy
-		ld	a,001h
-		ld	(00120h),a
-		out	(0a0h),a
-		ld	a,008h
-		ld	(00184h),a
-_702c:		jp	char_done_noxy
+char_bell:	ld	a,(sh_a0)
+		and	1
+		jp	nz,char_done_noxy	; don't lengthen bell if already on
+		ld	a,1
+		ld	(sh_a0),a
+		out	(0a0h),a		; speaker on
+		ld	a,8
+		ld	(cnt_to_tick8),a
+		jp	char_done_noxy
 
-_702f:		ld	a,000h
-		ld	(00120h),a
-		out	(0a0h),a
+speaker_off:	ld	a,0
+		ld	(sh_a0),a
+		out	(0a0h),a		; speaker off
 		ret	
 
 char_normal:	ld	b,a
@@ -7270,7 +7469,7 @@ _7536:		ld	a,(ring_head)
 		ld	hl,ringbuf
 		ld	iy,ring_head
 		ld	b,000h
-		ld	ix,(00196h)
+		ld	ix,(console0)
 		ld	c,(ix+02h)
 		push	ix
 		ld	de,00004h
@@ -7350,48 +7549,49 @@ _7552:		ei
 		nop	
 		nop	
 
-nmi_handler:	push	af
+rtc_intr:	push	af
 		ld	a,(sh_de)
 		or	010h
-		out	(0deh),a
+		out	(0deh),a	; send CONT4 interrupt to 68000
 		and	0efh
-		out	(0deh),a
-		ld	a,(00181h)
+		out	(0deh),a	; turn off CONT4
+		ld	a,(tick)
 		inc	a
-		ld	(00181h),a
-		in	a,(0feh)
+		ld	(tick),a
+		in	a,(0feh)	; clear 30Hz real time clock interrupt
 		pop	af
 		retn	
 
 _75c3:		nop	
-_75c4:		nop	
-_75c5:		ld	a,(00181h)
-		ld	hl,00180h
+rtc_hz:		defb	0	
+
+clock_update:	ld	a,(tick)
+		ld	hl,prev_tick
 		cp	(hl)
-		ret	z
+		ret	z		; do nothing if an RTC hasn't passed
 		ld	(hl),a
-		ld	hl,00182h
+		ld	hl,cnt_to_second
 		dec	(hl)
-		call	z,_75f1
-		call	_6839
-		call	_6b76
-		ld	hl,00183h
+		call	z,per_second
+		call	flush_input_queue
+		call	printer_update
+		ld	hl,cnt_to_tick2
 		xor	a
 		or	(hl)
-		jr	z,_75e6
+		jr	z,no_tick2
 		dec	(hl)
-		call	z,_4850
-_75e6:		ld	hl,00184h
+		call	z,per_tick2
+no_tick2:	ld	hl,cnt_to_tick8
 		xor	a
 		or	(hl)
 		ret	z
 		dec	(hl)
-		call	z,_702f
+		call	z,speaker_off
 		ret	
 
-_75f1:		ld	a,(_75c4)
+per_second:	ld	a,(rtc_hz)
 		ld	(hl),a
-		ld	hl,(00188h)
+		ld	hl,(clock0)
 		ld	a,(hl)
 		set	0,(hl)
 		xor	003h
@@ -7405,6 +7605,7 @@ _75f1:		ld	a,(_75c4)
 		jr	nz,_761f
 		call	panic
 		ascii	'68k crashed',0
+
 _761d:		ld	(hl),006h
 _761f:		ld	a,(003b8h)
 		or	a
@@ -7418,30 +7619,30 @@ _761f:		ld	a,(003b8h)
 		call	_7536
 		ret	
 
-_7638:		ld	ix,(00186h)
+clock_init:	ld	ix,(base0)
 		ld	de,00000h
 		add	ix,de
-		ld	(00188h),ix
+		ld	(clock0),ix
 		xor	a
 		ld	(ix+00h),a
-		ld	(00181h),a
-		ld	(00184h),a
-		ld	(00183h),a
-		ld	a,(_75c4)
-		ld	(00182h),a
+		ld	(tick),a
+		ld	(cnt_to_tick8),a
+		ld	(cnt_to_tick2),a
+		ld	a,(rtc_hz)
+		ld	(cnt_to_second),a
 		ld	(ix+01h),a
 		ld	hl,nmi_jp
 		ld	de,00066h
 		ld	bc,00003h
-		ldir			; have NMI intr go to nmi_handler
+		ldir			; have NMI intr go to rtc_intr
 		ld	a,(sh_ff)
 		or	020h
 		ld	(sh_ff),a
-		out	(0ffh),a
-		in	a,(0feh)
+		out	(0ffh),a	; enable real time clock interrupt
+		in	a,(0feh)	; clear real time clock interrupt
 		ret	
 
-nmi_jp:		jp	nmi_handler
+nmi_jp:		jp	rtc_intr
 
 ; Follow big-endian 32 bit pointer at PG:ix
 ; Returns with PG:de pointing at the new location.
@@ -7620,7 +7821,7 @@ _7763:		ld	a,(hl)
 		ld	a,(hl)
 		inc	hl
 		push	hl
-		ld	hl,00080h
+		ld	hl,port_shadow
 		add	hl,bc
 		ld	(hl),a
 		out	(c),a
@@ -7650,7 +7851,7 @@ _7786:		xor	a
 
 _778f:		cp	b
 		ret	nz
-		call	_42ab
+		call	bugchk_print
 		ascii	'DbLock',13,10,0
 		xor	a
 		ret	
@@ -7662,7 +7863,7 @@ _779f:		ld	a,(00339h)
 		ld	(00339h),a
 		ret	
 
-_77aa:		call	_42ab
+_77aa:		call	bugchk_print
 		ascii	'IlUlRq Additional: c o',0
 		ld	a,b
 		call	ring_puthex_spc
@@ -7743,12 +7944,12 @@ _785f:		ld	hl,(out_F8_7+7)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a
+		out	(0deh),a	; turn on little endian mode
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a
+		out	(0deh),a	; turn off little endian mode
 		ei	
 _7886:		ld	de,(_78bb)
 		ld	hl,(_78b7)
@@ -7826,12 +8027,12 @@ _790d:		ld	hl,(out_F8_8+1)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a
+		out	(0deh),a	; turn on little-endian mode
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a
+		out	(0deh),a	; turn off little endian mode
 		ei	
 _7934:		ld	de,(_7969)
 		ld	hl,(_7965)
@@ -7918,12 +8119,12 @@ _79cb:		ld	hl,(_7a30)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a
+		out	(0deh),a	; turn on little-endian mode
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a
+		out	(0deh),a	; turn off little endian mode
 		ei	
 _79fe:		ld	de,(_7a38)
 		ld	hl,(_7a34)
@@ -8014,11 +8215,11 @@ _7a9b:		ld	hl,(_7a30)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a
+		out	(0deh),a	; turn on little-endian mode
 		ld	a,087h
 		out	(0f8h),a
 		nop	
-		ld	a,b
+		ld	a,b		; turn off little-endian mode
 		out	(0deh),a
 		ei	
 _7ace:		ld	de,(_7a38)

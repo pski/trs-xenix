@@ -91,10 +91,14 @@ d_num		equ	5	; device number
 d_port		equ	6	; I/O port (some don't have this)
 d_bufp		equ	7	; pointer to put next char in data buffer
 d_buf		equ	9	; pointer to data buffer
+d_write		equ	11	; write buffered data to device routine pointer
+d_config	equ	13	; configure device (serial devices only)
 
 ; Device numbers (which index into the DCB table)
 dev_console	equ	0
 dev_printer	equ	3
+
+num_dev		equ	13	; total number of devices
 
 ; $3600 .. $3cff is where all character device input is queued.  Organized as 6
 ; blocks of 256 bytes each.  The first byte is the number of input pairs in
@@ -104,6 +108,7 @@ dev_printer	equ	3
 ; bytes per block there is room for 127 device/data pairs.  The device
 ; number may have the high bit set which seems to indicate the data is
 ; device status information rather than actual received input.
+; Multiterminal may also put frame/overrun/parity error bits in 6 .. 4.
 
 iq_writep	equ	$8d3	; pointer where next input is written
 iq_writecnt	equ	$8d5	; number of blocks in queue
@@ -458,7 +463,7 @@ checksum_OK:	ld	hl,00180h
 		ld	a,0c3h		; JP opcode
 		ld	(00038h),a
 		ld	(00035h),a
-		ld	hl,_4311	; RST 38 vector
+		ld	hl,rst38	; RST 38 vector
 		ld	(00039h),hl	; RST 38 will jump to the vector
 		ld	hl,_43c9
 		ld	(00036h),hl
@@ -468,21 +473,26 @@ checksum_OK:	ld	hl,00180h
 		ld	a,004h
 		ld	(sh_de),a
 		out	(0deh),a	; Halt 68000
+; This z80ctl is only guaranteed to work with the new PAL so detect the
+; old PAL and panic if found.  In particular, the new PAL changes bit 0
+; of $DE to be a burst mode.  When set to 1 the Z-80 is given complete
+; control of the 68000 memory bus.  In the old PAL bit 0 turns on some
+; kind of byte-swapping mode and was unused in previous versions.
 		ld	a,000h
 		ld	(sh_df),a
 		out	(0dfh),a
 		ld	bc,(08000h)
-		ld	de,0fd04h
-		ld	(08000h),de
+		ld	de,0fd04h	
+		ld	(08000h),de	; write known data
 		ld	a,(sh_de)
 		or	001h
-		out	(0deh),a	; Turn on little endian mode
-		ld	hl,(08000h)
+		out	(0deh),a	; Turn on little-endian or burst mode
+		ld	hl,(08000h)	; read known data
 		and	0feh
-		out	(0deh),a	; Turn off little endian mode
-		ld	(08000h),bc
+		out	(0deh),a	; Turn off little-endian or burst mode
+		ld	(08000h),bc	; restor test location.
 		or	a
-		sbc	hl,de
+		sbc	hl,de		; HL != DE if little-endian mode
 		jr	z,_415a
 		call	panic
 		ascii	'NewPal - Hardware Modification Required',13,10,0
@@ -518,16 +528,16 @@ _416c:		ld	hl,(08006h)
 		call	page_0
 		call	setup_intrvec
 		call	get_cmdbuf0
-		call	_77d7
+		call	dma_init
 		call	clock_init
-		call	_451a
-		call	_5004
+		call	fdc_init
+		call	hd_init
 		call	console_init
 		ld	hl,splash
 		call	ring_print
 		call	ring_printimm
 		ascii	13,10,10,0
-		call	_626a
+		call	char_dev_init
 		call	_6ce9
 		call	_5965
 		ld	hl,(base0)
@@ -547,18 +557,19 @@ _416c:		ld	hl,(08006h)
 cmd_go:		defb	0
 _41dd:		defb	0		; unused flag
 stack_base:	word	0
+
 main_loop:	xor	a
 		ld	hl,cmd_go
 		di	
 		or	(hl)
 		ld	(hl),0
 		ei	
-_41e9:		call	nz,dispatch_cmds ; patched to CALL in Model II
+dispatch_call:	call	nz,dispatch_cmds ; patched to CALL in Model II
 		ld	a,(003bfh)
 		or	a
 		call	nz,_5052
 		call	_59d0
-		call	_6cd1
+		call	console_update
 		call	_4579
 		ei	
 		call	clock_update
@@ -629,8 +640,8 @@ cmd_tab:	word	_459b		; x 000 xxxx  xxxx xxx 0
 		word	bad_cmd		; x 000 xxxx  xxxx xxx 1
 		word	_506f		; x 001 xxxx  xxxx xxx 0
 		word	bad_cmd		; x 001 xxxx  xxxx xxx 1
-		word	cmd_urg		; x 010 xxxx  xxxx xxF 0 (F=1 if flush?)
-		word	_68b0		; x 010 xxxx  xxxx xxx 1
+		word	cmd_write	; x 010 xxxx  xxxx xxC 0 (C=1 cancel)
+		word	cmd_config	; x 010 xxxx  xxxx xxx 1
 		word	_59f2		; x 011 xxxx  xxxx xxx 0
 		word	bad_cmd		; x 011 xxxx  xxxx xxx 1
 		word	_6cf9		; x 100 xxxx  xxxx xxx 0
@@ -673,11 +684,11 @@ panic:		di
 		ld	a,080h
 		ld	(sh_ff),a
 		out	(0ffh),a
-		call	_4307
+		call	cursor_to_bottom
 		call	ring_printimm
 		ascii	13,10,0
 		call	printimm
-		ascii	27,'RD',0
+		ascii	27,'RD',0	; inverse character mode
 		call	ring_printimm
 		ascii	'Bughlt: ',0
 		ex	(sp),hl
@@ -689,14 +700,15 @@ _42ec:		ld	a,(hl)
 		jr	_42ec
 
 _42f6:		call	printimm
-		ascii	27,'R@',0
+		ascii	27,'R@',0	; normal character mode
 		call	printimm
 		ascii	13,10,0
 		ex	(sp),hl
 		jp	_571b
 
-_4307:		call	printimm
-		ascii	27,'Y7',10,13,0
+cursor_to_bottom:
+		call	printimm
+		ascii	27,'Y7',10,13,0	; bottom line of screen and start new line
 		ret	
 
 ; RST 38 vector.  Some Model 12/16/6000 machines had bad chips that caused phantom
@@ -705,7 +717,7 @@ _4307:		call	printimm
 ; returns back to the original address assuming it was a phantom fetch and that a
 ; retry will operate correctly.
 
-_4311:		ex	(sp),hl
+rst38:		ex	(sp),hl
 		push	af
 		dec	hl
 		ld	a,(hl)
@@ -725,11 +737,11 @@ _4334:		pop	af
 		di	
 		push	hl
 		push	af
-		call	_4307
+		call	cursor_to_bottom
 		call	ring_printimm
 		ascii	13,10,0
 		call	printimm
-		ascii	27,'RD',0
+		ascii	27,'RD',0	; inverse character mode
 		call	ring_printimm
 		ascii	'Bughlt: Rst7  Additional:',0
 ; Show Z-80 registers and top of stack.
@@ -773,11 +785,11 @@ z80dump:	pop	hl
 _43c9:		di	
 		push	hl
 		push	af
-		call	_4307
+		call	cursor_to_bottom
 		call	ring_printimm
 		ascii	13,10,0
 		call	printimm
-		ascii	27,'RD',0
+		ascii	27,'RD',0	; inverse character mode
 		call	ring_printimm
 		ascii	'Bughlt: Wnd7  Additional:',0
 		jp	z80dump
@@ -845,17 +857,17 @@ _4457:		call	a_reti		; clear pending interrupts?
 		ldir			; set all $23 (35) interrupt vectors
 		ret	
 
-intrvec:	word	_656c		; $00
-		word	_6579		; $01
-		word	_6586		; $02
+intrvec:	word	mt0_0_tx_intr	; $00
+		word	mt0_1_tx_intr	; $01
+		word	mt0_2_tx_intr	; $02
 		word	ignore_intr	; $03
-		word	_6593		; $04
-		word	_65a0		; $05
-		word	_65ad		; $06
+		word	mt1_0_tx_intr	; $04
+		word	mt1_1_tx_intr	; $05
+		word	mt1_2_tx_intr	; $06
 		word	ignore_intr	; $07
-		word	_65ba		; $08
-		word	_65c7		; $09
-		word	_65d4		; $0A
+		word	mt2_0_tx_intr	; $08
+		word	mt2_1_tx_intr	; $09
+		word	mt2_2_tx_intr	; $0A
 		word	ignore_intr	; $0B
 		word	00000h		; $0C
 		word	00000h		; $0D
@@ -967,7 +979,8 @@ checksum_fail_msg:
 		nop	
 		nop	
 		nop	
-_451a:		ld	hl,_456c
+
+fdc_init:	ld	hl,_456c
 		ld	(00351h),hl
 		xor	a
 		ld	(00357h),a
@@ -988,12 +1001,12 @@ _454b:		ld	(iy+00h),000h
 		ld	(iy+01h),000h
 		add	iy,de
 		djnz	_454b
-		ld	hl,_455d
-		jp	_7760
+		ld	hl,fdc_port_init
+		jp	send_portz
 
-_455d:		defb	0efh,0ffh
-		defb	0e4h,0d0h
-		defb	0e2h,040h
+fdc_port_init:	defb	0efh,0ffh	; FDC select
+		defb	0e4h,0d0h	; FDC status
+		defb	0e2h,040h	; PIO port A
 		defb	0e2h,0cfh
 		defb	0e2h,0f7h
 		defb	0e2h,0b7h
@@ -2344,7 +2357,8 @@ _5000:		defb	000h
 _5001:		defb	000h			
 _5002:		defb	000h			
 		defb	000h			
-_5004:		ld	ix,00020h
+
+hd_init:	ld	ix,00020h
 		ld	de,(base0)
 		add	ix,de
 		ld	(base0_32),ix
@@ -2357,8 +2371,8 @@ _5004:		ld	ix,00020h
 		ld	hl,_54c0
 		ld	(003b4h),hl
 		call	_5615
-		ld	hl,_5047
-		call	_7760
+		ld	hl,hd_port_init
+		call	send_portz
 		ld	iy,003c7h
 		ld	de,00143h
 		ld	b,004h
@@ -2370,12 +2384,13 @@ _503a:		ld	(iy+00h),000h
 		djnz	_503a
 		ret	
 
-_5047:		defb	0c1h,00eh
+hd_port_init:	defb	0c1h,00eh
 		defb	0c4h,038h
 		defb	0c4h,003h
 		defb	0c4h,0d7h
 		defb	0c4h,001h
 		defb	000h
+
 _5052:		xor	a
 		ld	(003bfh),a
 		ld	ix,(base0_32)
@@ -3522,7 +3537,9 @@ _5934:		djnz	_5934
 reboot_on_halt:	defb	0
 _5943:		nop	
 halt_msg:	ascii	13,10,'[Z80 Control System Halted]',13,10,0
+
 _5964:		nop	
+
 _5965:		ld	ix,0003ch
 		ld	de,(base0)
 		add	ix,de
@@ -4595,12 +4612,15 @@ _622e:		defb	000h
 		defb	000h
 		defb	000h
 
-_626a:		ld	hl,_634f
-		call	_7760
-		ld	hl,_645a
-		call	_7760
-		ld	hl,_646e
-		call	_7760
+; Generally initialize all the character devices.  And a few other things
+; like detecting Model II vs Model 16/6000.
+
+char_dev_init:	ld	hl,various_port_init
+		call	send_portz
+		ld	hl,sio_a_port_init
+		call	send_portz
+		ld	hl,sio_b_port_init
+		call	send_portz
 		ld	a,047h
 		out	(0f1h),a
 		ld	a,0ffh
@@ -4622,7 +4642,7 @@ _6286:		djnz	_6286
 		jr	is_model_16
 
 ; cmd dispatch cannot be disabled on the Model II.
-is_model_2:	ld	(_41e9),a
+is_model_2:	ld	(dispatch_call),a
 
 is_model_16:	ld	de,video_RAM + 64 ; upper right of video display
 		ld	bc,15
@@ -4635,7 +4655,7 @@ is_model_16:	ld	de,video_RAM + 64 ; upper right of video display
 		ld	ix,dcb_addrs
 		ld	de,(base0)
 		ld	bc,4
-		ld	a,00dh
+		ld	a,num_dev
 dcb68map:	ld	l,(ix+02h)
 		ld	h,(ix+03h)
 		add	hl,de
@@ -4668,7 +4688,7 @@ emptyiq:	ld	(hl),a		; empty all input queue blocks
 		ld	hl,(base0)
 		add	hl,de
 		ex	de,hl
-		ld	a,00dh
+		ld	a,num_dev
 _6306:		ld	bc,0000ah
 		ld	hl,_6345
 		ldir	
@@ -4686,148 +4706,153 @@ _6306:		ld	bc,0000ah
 		or	d
 		ret	nz
 		ld	a,0c9h		; opcode for RET
-		ld	(_6844),a	; disable init for devices 4 .. 12
+		ld	(_6844),a	; disable Multiterminal status poll
 		ret	
 
 model_2_msg:	ascii	'[Model II]     '
 model_6000_16_msg:
 		ascii	'[Model 6000/16]'
+
 _6345:		defb	000h,000h,000h,000h,010h,000h,00dh,000h,000h,000h
-_634f:		defb	0f0h,030h
-		defb	0f3h,0c7h
+
+various_port_init:
+		defb	0f0h,030h	; CTC channel 0
+		defb	0f3h,0c7h	; CTC channel 3
 		defb	0f3h,001h
-		defb	079h,000h
+		defb	079h,000h	; MT0 channel 0
 		defb	079h,000h
 		defb	079h,000h
 		defb	079h,040h
-		defb	07bh,000h
+		defb	07bh,000h	; MT0 channel 1
 		defb	07bh,000h
 		defb	07bh,000h
 		defb	07bh,040h
-		defb	07dh,000h
+		defb	07dh,000h	; MT0 channel 2
 		defb	07dh,000h
 		defb	07dh,000h
 		defb	07dh,040h
-		defb	069h,000h
+		defb	069h,000h	; MT1 channel 0
 		defb	069h,000h
 		defb	069h,000h
 		defb	069h,040h
-		defb	06bh,000h
+		defb	06bh,000h	; MT1 channel 1
 		defb	06bh,000h
 		defb	06bh,000h
 		defb	06bh,040h
-		defb	06dh,000h
+		defb	06dh,000h	; MT1 channel 2
 		defb	06dh,000h
 		defb	06dh,000h
 		defb	06dh,040h
-		defb	059h,000h
+		defb	059h,000h	; MT2 channel 0
 		defb	059h,000h
 		defb	059h,000h
 		defb	059h,040h
-		defb	05bh,000h
+		defb	05bh,000h	; MT2 channel 1
 		defb	05bh,000h
 		defb	05bh,000h
 		defb	05bh,040h
-		defb	05dh,000h
+		defb	05dh,000h	; MT2 channel 2
 		defb	05dh,000h
 		defb	05dh,000h
 		defb	05dh,040h
-		defb	073h,036h
+		defb	073h,036h	; MT0 channel 0
 		defb	070h,00dh
 		defb	070h,000h
-		defb	073h,076h
+		defb	073h,076h	; MT0 channel 1
 		defb	071h,00dh
 		defb	071h,000h
-		defb	073h,0b6h
+		defb	073h,0b6h	; MT0 channel 2
 		defb	072h,00dh
 		defb	072h,000h
-		defb	063h,036h
+		defb	063h,036h	; MT1 channel 0
 		defb	060h,00dh
 		defb	060h,000h
-		defb	063h,076h
+		defb	063h,076h	; MT1 channel 1
 		defb	061h,00dh
 		defb	061h,000h
-		defb	063h,0b6h
+		defb	063h,0b6h	; MT1 channel 2
 		defb	062h,00dh
 		defb	062h,000h
-		defb	053h,036h
+		defb	053h,036h	; MT2 channel 0
 		defb	050h,00dh
 		defb	050h,000h
-		defb	053h,076h
+		defb	053h,076h	; MT2 channel 1
 		defb	051h,00dh
 		defb	051h,000h
-		defb	053h,0b6h
+		defb	053h,0b6h	; MT2 channel 2
 		defb	052h,00dh
 		defb	052h,000h
-		defb	074h,000h
-		defb	064h,008h
-		defb	054h,010h
-		defb	074h,0c5h
+		defb	074h,000h	; MT0 channel 0 control/interrupt
+		defb	064h,008h	; MT1 channel 0 control/interrupt
+		defb	054h,010h	; MT2 channel 0 control/interrupt
+		defb	074h,0c5h	; MT0 channel 0 control/interrupt
 		defb	074h,001h
-		defb	075h,0c5h
+		defb	075h,0c5h	; MT0 channel 1 control/interrupt
 		defb	075h,001h
-		defb	076h,0c5h
+		defb	076h,0c5h	; MT0 channel 2 control/interrupt
 		defb	076h,001h
-		defb	064h,0c5h
+		defb	064h,0c5h	; MT1 channel 0 control/interrupt
 		defb	064h,001h
-		defb	065h,0c5h
+		defb	065h,0c5h	; MT1 channel 1 control/interrupt
 		defb	065h,001h
-		defb	066h,0c5h
+		defb	066h,0c5h	; MT1 channel 2 control/interrupt
 		defb	066h,001h
-		defb	054h,0c5h
+		defb	054h,0c5h	; MT2 channel 0 control/interrupt
 		defb	054h,001h
-		defb	055h,0c5h
+		defb	055h,0c5h	; MT2 channel 1 control/interrupt
 		defb	055h,001h
-		defb	056h,0c5h
+		defb	056h,0c5h	; MT2 channel 2 control/interrupt
 		defb	056h,001h
-		defb	077h,047h
-		defb	067h,047h
-		defb	057h,047h
-		defb	079h,04eh
+		defb	077h,047h	; doc says not used; go figure
+		defb	067h,047h	; doc says not used; go figure
+		defb	057h,047h	; doc says not used; go figure
+		defb	079h,04eh	; MT0 channel 0
 		defb	079h,037h
 		defb	078h,000h
 		defb	079h,036h
-		defb	07bh,04eh
+		defb	07bh,04eh	; MT0 channel 1
 		defb	07bh,037h
 		defb	07ah,000h
 		defb	07bh,036h
-		defb	07dh,04eh
+		defb	07dh,04eh	; MT0 channel 2
 		defb	07dh,037h
 		defb	07ch,000h
 		defb	07dh,036h
-		defb	069h,04eh
+		defb	069h,04eh	; MT1 channel 0
 		defb	069h,037h
 		defb	068h,000h
 		defb	069h,036h
-		defb	06bh,04eh
+		defb	06bh,04eh	; MT1 channel 1
 		defb	06bh,037h
 		defb	06ah,000h
 		defb	06bh,036h
-		defb	06dh,04eh
+		defb	06dh,04eh	; MT1 channel 2
 		defb	06dh,037h
 		defb	06ch,000h
 		defb	06dh,036h
-		defb	059h,04eh
+		defb	059h,04eh	; MT2 channel 0
 		defb	059h,037h
 		defb	058h,000h
 		defb	059h,036h
-		defb	05bh,04eh
+		defb	05bh,04eh	; MT2 channel 1
 		defb	05bh,037h
 		defb	05ah,000h
 		defb	05bh,036h
-		defb	05dh,04eh
+		defb	05dh,04eh	; MT2 channel 2
 		defb	05dh,037h
 		defb	05ch,000h
 		defb	05dh,036h
-		defb	0e3h,042h
+		defb	0e3h,042h	; CTC port B
 		defb	0e3h,00fh
 		defb	0e3h,007h
-		defb	0e0h,000h
+		defb	0e0h,000h	; Printer
 		defb	0e0h,008h
 		defb	0e0h,000h
-		defb	0e3h,083h
+		defb	0e3h,083h	; CTC port B
 		defb	000h
-_645a:		defb	0f6h,018h
+
+sio_a_port_init:
+		defb	0f6h,018h
 		defb	0f6h,004h
 		defb	0f6h,044h
 		defb	0f6h,005h
@@ -4837,8 +4862,11 @@ _645a:		defb	0f6h,018h
 		defb	0f6h,003h
 		defb	0f6h,0c1h
 		defb	000h
+
 		nop	
-_646e:		defb	0f7h,018h
+
+sio_b_port_init:
+		defb	0f7h,018h
 		defb	0f7h,004h
 		defb	0f7h,044h
 		defb	0f7h,005h
@@ -4850,6 +4878,7 @@ _646e:		defb	0f7h,018h
 		defb	0f7h,002h
 		defb	0f7h,020h
 		defb	000h
+
 		nop	
 
 _6486:		exx	
@@ -4988,63 +5017,63 @@ _6565:		ld	a,028h
 
 		jr	sio_xmit	; TODO: why unreferenced?
 
-_656c:		exx	
+mt0_0_tx_intr:	exx	
 		push	iy
-		ld	bc,00479h
-		ld	iy,_6bd7
-		jp	_65de
+		ld	bc,00479h	; B = device number, C = I/O port
+		ld	iy,mt0_0_dcb
+		jp	mt_tx_intr
 
-_6579:		exx	
+mt0_1_tx_intr:	exx	
 		push	iy
-		ld	bc,0057bh
-		ld	iy,_6be7
-		jp	_65de
+		ld	bc,0057bh	; B = device number, C = I/O port
+		ld	iy,mt0_1_dcb
+		jp	mt_tx_intr
 
-_6586:		exx	
+mt0_2_tx_intr:	exx	
 		push	iy
-		ld	bc,0067dh
-		ld	iy,_6bf7
-		jp	_65de
+		ld	bc,0067dh	; B = device number, C = I/O port
+		ld	iy,mt0_2_dcb
+		jp	mt_tx_intr
 
-_6593:		exx	
+mt1_0_tx_intr:	exx	
 		push	iy
-		ld	bc,00769h
-		ld	iy,_6c07
-		jp	_65de
+		ld	bc,00769h	; B = device number, C = I/O port
+		ld	iy,mt1_0_dcb
+		jp	mt_tx_intr
 
-_65a0:		exx	
+mt1_1_tx_intr:	exx	
 		push	iy
-		ld	bc,0086bh
-		ld	iy,_6c17
-		jp	_65de
+		ld	bc,0086bh	; B = device number, C = I/O port
+		ld	iy,mt1_1_dcb
+		jp	mt_tx_intr
 
-_65ad:		exx	
+mt1_2_tx_intr:	exx	
 		push	iy
-		ld	bc,0096dh
-		ld	iy,_6c27
-		jp	_65de
+		ld	bc,0096dh	; B = device number, C = I/O port
+		ld	iy,mt1_2_dcb
+		jp	mt_tx_intr
 
-_65ba:		exx	
+mt2_0_tx_intr:	exx	
 		push	iy
-		ld	bc,00a59h
-		ld	iy,_6c37
-		jp	_65de
+		ld	bc,00a59h	; B = device number, C = I/O port
+		ld	iy,mt2_0_dcb
+		jp	mt_tx_intr
 
-_65c7:		exx	
+mt2_1_tx_intr:	exx	
 		push	iy
-		ld	bc,00b5bh
-		ld	iy,_6c47
-		jp	_65de
+		ld	bc,00b5bh	; B = device number, C = I/O port
+		ld	iy,mt2_1_dcb
+		jp	mt_tx_intr
 
-_65d4:		exx	
+mt2_2_tx_intr:	exx	
 		push	iy
-		ld	bc,00c5dh
-		ld	iy,_6c57
-_65de:		ex	af,af'
+		ld	bc,00c5dh	; B = device number, C = I/O port
+		ld	iy,mt2_2_dcb
+mt_tx_intr:	ex	af,af'
 		call	a_reti
 _65e2:		in	a,(c)
 		ld	d,a
-		and	(iy+0fh)
+		and	(iy+0fh)	; dcb+15 related to usart status
 		jr	nz,_65f0
 		ex	af,af'
 		exx	
@@ -5053,48 +5082,49 @@ _65e2:		in	a,(c)
 		ret	
 
 _65f0:		push	af
-		and	002h
-		call	nz,_661b
+		and	002h		; RX RDY?
+		call	nz,_661b	; grab an input byte while we're here
 		pop	af
-		rrca	
-		jp	nc,_65e2
+		rrca
+		jp	nc,_65e2	; TX RDY?  No, then go poll again
 		call	dcb_get_char
-		jr	z,_6607
+		jr	z,disable_tx
 		dec	c
-		out	(c),a
+		out	(c),a		; data out to Multiterminal port
 		inc	c
 		jp	nc,_65e2
-_6607:		ld	hl,port_shadow
+; No buffer data so transmit complete interrupt of no use
+disable_tx:	ld	hl,port_shadow
 		ld	e,c
 		ld	d,000h
 		add	hl,de
 		ld	a,(hl)
 		and	0feh
 		ld	(hl),a
-		out	(c),a
-		res	0,(iy+0fh)
+		out	(c),a		; disable transmit?
+		res	0,(iy+0fh)	; ignore tx ready
 		jp	_65e2
 
 _661b:		dec	c
-		in	e,(c)
+		in	e,(c)		; MT receive character
 		inc	c
-		ld	a,038h
+		ld	a,038h		; frame error | overrun | parity error
 		and	d
 		ld	d,b
 		jp	z,_6636
-		rlca	
+		rlca			; error bits into upper nybble
 		or	b
-		ld	b,a
+		ld	b,a		; B = 0 fe ov pe <dev#>
 		push	bc
-		ld	b,000h
+		ld	b,0
 		ld	hl,port_shadow
 		add	hl,bc
 		ld	a,(hl)
 		or	010h
-		out	(c),a
+		out	(c),a		; assert BREAK?
 		pop	bc
 _6636:		ld	a,e
-		call	dev_q_input
+		call	dev_q_input	; may have error bits
 		ld	b,d
 		ret	
 
@@ -5217,18 +5247,18 @@ printer_output:	ld	b,dev_printer
 
 		and	07fh		; TODO!
 
-; Odd routine in that it send 256 bytes out to a DCB port.  But the data
-; sent seems to come from nowhere.  Perhaps it is unimportant.  Though it
-; almost feels like they meant to set B=1 before the outi.
+; Called after output data is queued for a Multiterminal port.  Instead
+; of trying to send data it seems we only need enable transmission.  It
+; must send a transmit ready interrupt to get the data out.
 
-_66e6:		ld	c,(iy + d_port)
+mt_tx_enable:	ld	c,(iy + d_port)
 		ld	b,0
 		ld	hl,port_shadow
 		add	hl,bc
 		di	
-		set	0,(iy+0fh)
-		set	0,(hl)
-		outi	
+		set	0,(iy+0fh)	; pay attention to tx ready
+		set	0,(hl)		; enable transmission
+		outi			; and tell MT that.
 		ei	
 		ret	
 
@@ -5236,11 +5266,6 @@ _66e6:		ld	c,(iy + d_port)
 ; High bit of B can be set.  In that character it means A is some kind
 ; of device status information.  I think the RS-232 status lines in some
 ; cases.
-
-; TODO - $8d3 is pointer to some kind of device output queue buffer.
-; First byte is the number of bytes in the buffer (or first block).
-; Second byte seems to indicate ctl-Q has gotten in there.
-; About 6 * 256 in size, I suspect.
 
 dev_q_input:	ld	hl,(iq_writep)
 		ld	(hl),b		; device number
@@ -5286,16 +5311,16 @@ noblkwrap:	ld	(hl),a		; save current write block # mod 6
 		ld	(iq_writep),hl	; save pointer to current block
 		ret
 
-; Unclear: 68000 is flushing input data and asking for an interrupt.
-; Perhaps this is after the 68K has read all the data?
+; Get rid of all data queued for output to a device.
 
-uh_dev_flush:	di	
+dcb_cancel_write:
+		di	
 		ld	a,(iy + d_cnt)
 		or	a
 		jr	z,no_data
-		sub	(ix+05h)	; bytes available - bytes requested
+		sub	(ix+05h)	; bytes available - N
 		neg	
-		ld	(ix+05h),a	; bytes requested - bytes available
+		ld	(ix+05h),a	; N - bytes available
 		xor	a
 		ld	(iy + d_cnt),a	; all bytes in buffer are consumed
 		ld	b,(iy + d_num)
@@ -5307,10 +5332,10 @@ uh_dev_flush:	di
 		ld	b,0
 		add	hl,bc
 		ld	a,(hl)
-		and	0feh
+		and	0feh		; disable TX interrupt
 		ld	(hl),a
 		out	(c),a
-		res	0,(iy+0fh)
+		res	0,(iy+0fh)	; ignore TX ready
 dev0123:	ld	a,(ix+04h)
 		or	010h
 		and	0feh
@@ -5320,16 +5345,16 @@ dev0123:	ld	a,(ix+04h)
 no_data:	ei	
 		ret	
 
-; Two things done here.  One is to notify the 68000 if we have and devices that
+; Two things done here.  One is to notify the 68000 if we have any devices that
 ; have empty data buffers (so it can send more if it wants?)
 ; The second is to pass device input data up to the 68000.
 
-char_io_update:	ld	b,00dh
-		ld	hl,dcb_empty_end-1
+char_io_update:	ld	b,num_dev
+		ld	hl,dcb_empty_notified + num_dev - 1
 		xor	a
-_6782:		or	(hl)
-		jr	z,dcb_has_data
-		ld	(hl),000h
+ntflp:		or	(hl)
+		jr	z,notified
+		ld	(hl),0
 		push	bc
 		push	hl
 		ld	a,b
@@ -5346,8 +5371,8 @@ _6782:		or	(hl)
 		pop	hl
 		pop	bc
 		xor	a
-dcb_has_data:	dec	hl
-		djnz	_6782
+notified:	dec	hl
+		djnz	ntflp
 
 		ld	a,(iq_writecnt)
 		or	a
@@ -5400,7 +5425,7 @@ _67d9:		add	a,002h
 		ld	b,000h
 		sla	c
 		rl	b
-		ldir			; copying input data to 68000 buffer
+		ldir			; appending input data to 68000 buffer
 		pop	de
 		pop	af
 		jr	nc,_67f7
@@ -5409,9 +5434,9 @@ _67d9:		add	a,002h
 		push	af
 		jr	_67d9
 
-_67f7:		ld	a,(iq_tmp)
-		inc	a		; number of pairs in block
-		ld	(de),a
+_67f7:		ld	a,(iq_tmp)	; new 68000 pair count - 1
+		inc	a
+		ld	(de),a		; set new 68000 input pair count
 		ld	hl,iq_writecnt
 		dec	(hl)		; one less block in queue
 		ld	hl,iq_readblk
@@ -5420,10 +5445,13 @@ _67f7:		ld	a,(iq_tmp)
 		cp	iq_blk_num
 		jr	nz,_680a
 		xor	a
-_680a:		ld	(hl),a		; and moved to next block to read
+_680a:		ld	(hl),a		; and move to next block to read
 		ex	de,hl
 		inc	hl
 		inc	hl
+; Use bit 4 of the device number in the first pair to indicate the 68000
+; has been notified of the input.  If the bit is set then we've already told it.
+; Otherwise, set the bit and send an interrupt.
 		bit	4,(hl)
 		ret	nz
 		set	4,(hl)
@@ -5438,7 +5466,7 @@ _680a:		ld	(hl),a		; and moved to next block to read
 
 dcb_get_char:	ld	a,(iy + d_cnt)
 		or	a
-		ret	z		; no nothing if no data queued
+		ret	z		; do nothing if no data queued
 		ld	h,(iy + d_bufp + 1)
 		ld	l,(iy + d_bufp)	; data buffer pointer
 		ld	a,(hl)		; get byte
@@ -5448,7 +5476,7 @@ dcb_get_char:	ld	a,(iy + d_cnt)
 		dec	(iy + d_cnt)	; 1 less byte in buffer
 		ret	nz
 		ld	e,b
-		ld	hl,dcb_empty
+		ld	hl,dcb_empty_notified
 		ld	d,0
 		adc	hl,de
 		ld	(hl),1
@@ -5467,7 +5495,7 @@ flush_input_queue:
 		ret	
 
 _6844:		ld	ix,_6c85
-		ld	b,009h
+		ld	b,num_dev - 4
 _684a:		ld	l,(ix+00h)
 		ld	h,(ix+01h)
 		push	hl
@@ -5483,14 +5511,16 @@ _684a:		ld	l,(ix+00h)
 		djnz	_684a
 		ret	
 
-; If bit 1 of B == 0 then 68000 has (urgent?) data to send to a device.
-; Otherwise it seems to flush data queued the the device or something.
+; If bit 1 of B == 0 then 68000 has data to write to a device.
+; Otherwise it cancels the current write to the device in progress.
 
-cmd_urg:	ld	a,c
+; TODO: capture what we know about the 68K DCB (we know 4+2 of 10 bytes)
+
+cmd_write:	ld	a,c
 		and	$F
 		call	get_dcb
 		bit	1,b
-		jp	nz,uh_dev_flush
+		jp	nz,dcb_cancel_write
 		ld	l,(iy + d_buf)
 		ld	(iy + d_bufp),l
 		ld	h,(iy + d_buf + 1)
@@ -5500,8 +5530,8 @@ cmd_urg:	ld	a,c
 		call	copy_from_68k	; 68000 DCB + 0 must be data pointer
 		di	
 		ld	(iy + d_cnt),c
-		ld	l,(iy+0bh)
-		ld	h,(iy+0ch)
+		ld	l,(iy + d_write)
+		ld	h,(iy + d_write + 1)
 		call	jphl
 		ei	
 		ret	
@@ -5530,14 +5560,23 @@ get_dcb:	push	de
 		pop	de
 		ret	
 
-_68b0:		ld	a,c
+; Seems to ensure that the serial port configuration is up to
+; date and send back the port status through the input queue if it
+; has changed.  Only the SIO and Multiterminal devices have
+; non-empty d_config vectors.
+
+cmd_config:	ld	a,c
 		and	00fh
 		call	get_dcb
-		ld	l,(iy+0dh)
-		ld	h,(iy+0eh)
+		ld	l,(iy + d_config)
+		ld	h,(iy + d_config + 1)
 		jp	(hl)
 
-_68bd:		ld	e,(ix+07h)
+; Rough guess that this ensuring that the SIO hardware is configured according
+; the 68000's parameters.  And the serial port status is send back up through
+; the input queue if it has changed.
+
+sio_config:	ld	e,(ix+07h)
 		ld	d,(ix+08h)
 		ld	l,(ix+06h)
 		ld	a,(iy+00h)
@@ -5639,7 +5678,7 @@ _6962:		ld	e,a
 		ld	a,l
 		and	00fh
 		ld	l,a
-		ld	a,(iy+03h)
+		ld	a,(iy+03h)	; buad rate?
 		and	00fh
 		cp	l
 		jr	z,_69ad
@@ -5676,7 +5715,7 @@ _69c4:		bit	4,e
 		jr	z,_69ca
 		or	004h
 _69ca:		di	
-		cp	(iy+02h)
+		cp	(iy+02h)	; dcb+2 is RS-232 port status?
 		jr	z,_69db
 		ld	(iy+02h),a
 		ld	b,(iy + d_num)
@@ -5723,10 +5762,15 @@ _69f5:		defb	000h,000h,000h
 		defb	000h,000h,000h
 		defb	000h,000h,000h
 
+; Involves Multiterminal port.  Definitely picking up the usart status
+; flags and packaging them for delivery to the 68000 via the input queue.
+; It seems to care if any error bit has changed but only passes DSR back.
+; Eh, maybe it is just a DSR check.
+
 _6a25:		push	bc
 		ld	c,(iy + d_port)
 		in	b,(c)
-		ld	a,(iy+02h)
+		ld	a,(iy+02h)	; usart status mirror?  or just DSR?
 		and	0f8h
 		or	006h
 		bit	7,b
@@ -5745,7 +5789,10 @@ _6a38:		cp	(iy+02h)
 _6a4c:		pop	bc
 		ret	
 
-_6a4e:		ld	b,(ix+06h)
+; Seems like we're getting the parameters the 68000 has for the
+; Multiterminal port and applying them to the hardware.
+
+mt_config:	ld	b,(ix+06h)
 		ld	c,(ix+08h)
 		ld	e,(ix+07h)
 		ld	a,(iy+03h)
@@ -5813,7 +5860,7 @@ _6ab4:		ld	h,a
 		nop	
 		nop	
 		out	(c),d
-		ld	(iy+0fh),002h
+		ld	(iy+0fh),002h	; pay attention to RX ready
 		res	0,d
 		nop	
 		nop	
@@ -5825,11 +5872,11 @@ _6ab4:		ld	h,a
 		ld	a,d
 		ld	e,c
 		ld	d,000h
-		ld	hl,00080h
+		ld	hl,port_shadow
 		add	hl,de
 		ld	(hl),a
-		ld	a,(iy+03h)
-		ld	(iy+03h),b
+		ld	a,(iy+03h)	; current baud rate
+		ld	(iy+03h),b	; new baud rate
 		push	af
 		ld	a,b
 		and	00fh
@@ -5837,19 +5884,19 @@ _6ab4:		ld	h,a
 		pop	af
 		and	00fh
 		cp	b
-		call	nz,_6af7
+		call	nz,mt_set_baud
 		ei	
 		ret	
 
-_6af7:		ld	c,(iy + d_num)
-		ld	a,(iy+03h)
+mt_set_baud:	ld	c,(iy + d_num)
+		ld	a,(iy+03h)	; dcb+3 must be baud rate
 		and	00fh
-		cp	011h
+		cp	011h		; well, this will always generate carry
 		ret	nc
 		add	a,a
 		ld	e,a
 		ld	d,000h
-		ld	hl,_6b2c
+		ld	hl,baud_clock
 		add	hl,de
 		ld	e,(hl)
 		inc	hl
@@ -5858,7 +5905,7 @@ _6af7:		ld	c,(iy + d_num)
 		or	e
 		ret	z
 		ld	a,c
-		cp	00dh
+		cp	num_dev
 		ret	nc
 		sub	004h
 		ld	c,a
@@ -5878,20 +5925,20 @@ _6af7:		ld	c,(iy + d_num)
 		out	(c),d
 		ret	
 
-_6b2c:		word	00000h
-		word	009c4h
-		word	00683h
-		word	00470h
+baud_clock:	word	00000h
+		word	009c4h		; 50 baud
+		word	00683h		; 75 baud
+		word	00470h		; 110 baud
 		word	003a4h
-		word	00341h
+		word	00341h		; 150 baud
 		word	00271h
-		word	001a1h
-		word	000d0h
-		word	00068h
+		word	001a1h		; 300 baud
+		word	000d0h		; 600 baud
+		word	00068h		; 1200 baud
 		word	00045h
-		word	00034h
-		word	0001ah
-		word	0000dh
+		word	00034h		; 2400 baud
+		word	0001ah		; 4800 baud
+		word	0000dh		; 9600 baud
 		word	00000h
 		word	00000h
 
@@ -5960,7 +6007,7 @@ sio_A_dcb:	defb	000h
 		word	dbuf_sio_A
 
 		word	dcb_sio_xmit
-		word	_68bd
+		word	sio_config
 
 		defb	000h			
 
@@ -5975,7 +6022,7 @@ sio_B_dcb:	defb	000h
 		word	dbuf_sio_B
 
 		word	dcb_sio_xmit
-		word	_68bd
+		word	sio_config
 
 		defb	000h			
 
@@ -5994,25 +6041,25 @@ printer_dcb:	defb	000h
 
 		defb	000h			
 
-; For these devices offset 6 has an I/O port number.  So I think they all
-; represent very similar things; perhaps some multi-port serial board?
+; 9 devices in groups of 3 for up to 3 Multiterminal Interface boards.
+; The Multiterminal Interface boards adds 3 RS-232 ports to the machine.
 
-_6bd7:		defb	000h			
+mt0_0_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	4		; device 4			
-		defb	079h			
+		defb	079h		; I/O port
 		word	0
 		word	dbuf_dev_4
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6be7:		defb	000h			
+mt0_1_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6022,12 +6069,12 @@ _6be7:		defb	000h
 		word	0
 		word	dbuf_dev_5
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6bf7:		defb	000h			
+mt0_2_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6037,12 +6084,12 @@ _6bf7:		defb	000h
 		word	0
 		word	dbuf_dev_6
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6c07:		defb	000h			
+mt1_0_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6052,12 +6099,12 @@ _6c07:		defb	000h
 		word	0
 		word	dbuf_dev_7
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6c17:		defb	000h			
+mt1_1_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6067,12 +6114,12 @@ _6c17:		defb	000h
 		word	0
 		word	dbuf_dev_8
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6c27:		defb	000h			
+mt1_2_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6082,11 +6129,11 @@ _6c27:		defb	000h
 		word	0
 		word	dbuf_dev_9
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
-_6c37:		defb	000h			
+mt2_0_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6096,12 +6143,12 @@ _6c37:		defb	000h
 		word	0
 		word	dbuf_dev_10
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6c47:		defb	000h			
+mt2_1_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6111,12 +6158,12 @@ _6c47:		defb	000h
 		word	0
 		word	dbuf_dev_11
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-_6c57:		defb	000h			
+mt2_2_dcb:	defb	000h			
 		defb	000h			
 		defb	000h			
 		defb	000h			
@@ -6126,14 +6173,16 @@ _6c57:		defb	000h
 		word	0
 		word	dbuf_dev_12
 
-		word	_66e6
-		word	_6a4e
+		word	mt_tx_enable
+		word	mt_config
 
 		defb	000h			
 
-; Flags set indicating which device control blocks have empty data buffers.
-dcb_empty:	defb	0,0,0,0,0,0,0,0,0,0,0,0,0
-dcb_empty_end:
+; Flags set indicating which device control blocks with empty data buffers
+; have been reported to the 68000 (so it knows it can write more data).
+
+dcb_empty_notified:
+		defb	0,0,0,0,0,0,0,0,0,0,0,0,0
 
 		defb	001h
 
@@ -6141,6 +6190,7 @@ dcb_empty_end:
 ; second the address of associated device data in 68000 page 0 memory.
 ; Which is an offset off (base0) initialized at the start (and it only does 13).
 ; TODO: Add to map of the base0 68000 memory area.
+; 10 bytes each.  First 4 are a pointer, 4th is a status byte.
 
 dcb_addrs:	word	console_dcb
 _6c77:		word	$2e6
@@ -6154,31 +6204,31 @@ _6c77:		word	$2e6
 		word	printer_dcb
 		word	$304
 
-_6c85:		word	_6bd7
+_6c85:		word	mt0_0_dcb
 		word	$30e
 
-		word	_6be7
+		word	mt0_1_dcb
 		word	$318
 
-		word	_6bf7
+		word	mt0_2_dcb
 		word	$322
 
-		word	_6c07
+		word	mt1_0_dcb
 		word	$32c
 
-		word	_6c17
+		word	mt1_1_dcb
 		word	$336
 
-		word	_6c27
+		word	mt1_2_dcb
 		word	$340
 
-		word	_6c37
+		word	mt2_0_dcb
 		word	$34a
 
-		word	_6c47
+		word	mt2_1_dcb
 		word	$354
 
-		word	_6c57
+		word	mt2_2_dcb
 		word	$35e
 
 		word	0
@@ -6211,7 +6261,11 @@ _6c85:		word	_6bd7
 		word	0
 		word	0
 
-_6cd1:		ld	a,(console_dcb + d_cnt)
+; Copy buffered output to the screen (if any).
+; TODO: figure out what carry returned by "putc" means.  Wild guess is it
+; means the display has scrolled so only do a line at a time.
+
+console_update:	ld	a,(console_dcb + d_cnt)
 		or	a
 		ret	z
 		ld	iy,console_dcb
@@ -6596,7 +6650,7 @@ _6faf:		ld	a,(_6fd7)
 		ret	
 
 ; I daresay this has something to do with cursor blink, just because of
-; the 60 counter there.
+; the 60 counter there.  Update: not so convinced.
 
 _6fb7:		ld	hl,_6fd4
 		ld	a,(hl)
@@ -7044,9 +7098,9 @@ _72b2:		sub	020h
 conout_esc_r:	push	hl
 		ld	hl,console_flags
 		cp	'@'
-		jr	z,_72e0
+		jr	z,inv_off
 		cp	'D'
-		jr	z,_72e4
+		jr	z,inv_on
 		cp	'C'
 		jr	z,_72e8
 		cp	'c'
@@ -7055,38 +7109,39 @@ conout_esc_r:	push	hl
 		jr	z,_7308
 		cp	'g'
 		jr	z,_730c
-_72dc:		pop	hl
+cnd:		pop	hl
 		jp	char_restart
 
-_72e0:		res	2,(hl)
-		jr	_72dc
+inv_off:	res	2,(hl)		; clear inverse character mode
+		jr	cnd
 
-_72e4:		set	2,(hl)
-		jr	_72dc
+inv_on:		set	2,(hl)		; enter inverse character mode
+		jr	cnd
 
 _72e8:		ld	a,(_7315)
 		ld	(_7312+1),a
 		ld	hl,_7310
-		call	_7760
-		jr	_72dc
+		call	send_portz
+		jr	cnd
 
 _72f6:		ld	a,(_7315)
 		and	01fh
 		or	020h
 		ld	(_7312+1),a
 		ld	hl,_7310
-		call	_7760
-		jr	_72dc
+		call	send_portz
+		jr	cnd
 
-_7308:		set	1,(hl)
-		jr	_72dc
+_7308:		set	1,(hl)		; enter bit 1 mode
+		jr	cnd
 
-_730c:		res	1,(hl)
-		jr	_72dc
+_730c:		res	1,(hl)		; clear bit 1 mode
+		jr	cnd
 
 _7310:		defb	0fch,00ah
 _7312:		defb	0fdh,069h
 		defb	000h
+
 _7315:		defb	$69
 
 conout_esc_std:	cp	'?'
@@ -7117,7 +7172,7 @@ _733f:		cp	068h
 		ld	(_7315),a
 		ld	(_7312+1),a
 		ld	hl,_7310
-		call	_7760
+		call	send_portz
 		jp	char_restart
 
 _735c:		ld	a,(_7315)
@@ -7126,7 +7181,7 @@ _735c:		ld	a,(_7315)
 		ld	(_7315),a
 		ld	(_7312+1),a
 		ld	hl,_7310
-		call	_7760
+		call	send_portz
 		jp	char_restart
 
 _7372:		cp	020h
@@ -7150,7 +7205,7 @@ _737e:		cp	071h
 		ld	a,008h
 		ld	(_73cb+1),a
 		ld	hl,_73c5
-		call	_7760
+		call	send_portz
 		jp	char_restart
 
 _73aa:		ld	a,(_7315)
@@ -7161,7 +7216,7 @@ _73aa:		ld	a,(_7315)
 		ld	a,009h
 		ld	(_73cb+1),a
 		ld	hl,_73c5
-		call	_7760
+		call	send_portz
 		jp	char_restart
 
 _73c5:		defb	0fch,00ah
@@ -7302,6 +7357,7 @@ line_offset:	ld	l,a
 		ret	
 
 ; Set the top left corner of the screen to start displaying at VRAM address HL.
+; Preserves interrupt enable state.
 
 set_vram_pos:	ld	a,i
 		push	af
@@ -7318,7 +7374,8 @@ set_vram_pos:	ld	a,i
 		out	(c),h
 		pop	af
 		ret	po
-		ei	
+		ei
+
 		ret	
 
 ; Wait until a key is pressed and return scancode in A.
@@ -7810,13 +7867,15 @@ add_ptr_hl:	ld	a,(ix+03h)
 		ret	nc
 		inc	(ix+01h)
 		ret	
+; Output data to ports with HL pointing to a 0 terminated list of
+; port,data pairs.
 
-_7760:		push	bc
+send_portz:	push	bc
 		ld	b,000h
-_7763:		ld	a,(hl)
+ptz_lp:		ld	a,(hl)
 		inc	hl
 		or	a
-		jr	z,_7776
+		jr	z,ptz_dn
 		ld	c,a
 		ld	a,(hl)
 		inc	hl
@@ -7826,9 +7885,9 @@ _7763:		ld	a,(hl)
 		ld	(hl),a
 		out	(c),a
 		pop	hl
-		jr	_7763
+		jr	ptz_lp
 
-_7776:		pop	bc
+ptz_dn:		pop	bc
 		ret	
 
 ; Return HL = HL % DE and BC = HL / DE.
@@ -7874,7 +7933,7 @@ _77aa:		call	bugchk_print
 		or	001h
 		ret	
 
-_77d7:		push	bc
+dma_init:	push	bc
 		push	hl
 		ld	hl,out_F8_4
 		ld	bc,004f8h
@@ -7884,6 +7943,7 @@ _77d7:		push	bc
 		ret	
 
 out_F8_4:	defb	0c3h,083h,08bh,0afh
+
 _77e8:		ld	(out_F8_5+1),hl
 		ld	hl,out_F8_5
 		ld	bc,00ef8h
@@ -7891,6 +7951,7 @@ _77e8:		ld	(out_F8_5+1),hl
 		ret	
 
 out_F8_5:	defb	079h,000h,000h,0ffh,001h,014h,028h,085h,0e7h,08ah,0cfh,005h,0cfh,087h
+
 _7802:		ld	(out_F8_6+7),hl
 		ld	hl,out_F8_6
 		ld	bc,00cf8h
@@ -7898,6 +7959,7 @@ _7802:		ld	(out_F8_6+7),hl
 		ret	
 
 out_F8_6:	defb	06dh,0e7h,0ffh,001h,02ch,010h,08dh,000h,000h,08ah,0cfh,087h
+
 _781a:		ld	bc,00200h
 		ld	(_78b7),bc
 		ex	de,hl
@@ -7944,12 +8006,12 @@ _785f:		ld	hl,(out_F8_7+7)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a	; turn on little endian mode
+		out	(0deh),a	; Turn on burst mode
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a	; turn off little endian mode
+		out	(0deh),a	; Turn off burst mode
 		ei	
 _7886:		ld	de,(_78bb)
 		ld	hl,(_78b7)
@@ -8027,12 +8089,12 @@ _790d:		ld	hl,(out_F8_8+1)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a	; turn on little-endian mode
+		out	(0deh),a	; Turn on burst mode.
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a	; turn off little endian mode
+		out	(0deh),a	; Turn off burst mode.
 		ei	
 _7934:		ld	de,(_7969)
 		ld	hl,(_7965)
@@ -8119,12 +8181,12 @@ _79cb:		ld	hl,(_7a30)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a	; turn on little-endian mode
+		out	(0deh),a	; Turn on burst mode.
 		ld	a,087h
 		out	(0f8h),a
 		nop	
 		ld	a,b
-		out	(0deh),a	; turn off little endian mode
+		out	(0deh),a	; Turn off burst mode.
 		ei	
 _79fe:		ld	de,(_7a38)
 		ld	hl,(_7a34)
@@ -8215,12 +8277,12 @@ _7a9b:		ld	hl,(_7a30)
 		ld	b,a
 		or	001h
 		di	
-		out	(0deh),a	; turn on little-endian mode
+		out	(0deh),a	; Turn on burst mode.
 		ld	a,087h
 		out	(0f8h),a
 		nop	
-		ld	a,b		; turn off little-endian mode
-		out	(0deh),a
+		ld	a,b
+		out	(0deh),a	; Turn off burst mode.
 		ei	
 _7ace:		ld	de,(_7a38)
 		ld	hl,(_7a34)

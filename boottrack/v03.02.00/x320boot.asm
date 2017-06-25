@@ -17,20 +17,37 @@
 ; Current Status:
 ;	Not completely clear the entry point is $1004.  Check out boot ROM.
 ;
-;	I think all the data and addresses have been identified but there
-;	are some bits of code doing table lookup where the location of the
-;	table is not clear.
+;	Disassembly largely complete.  Should be able to reassemble at will.
+;	Still need some labels and commentary but major pieces documented.
 ;
-;	Of course, save enough to "patch" if your changes use up exactly
-;	the same space as the original code.
+; The main areas of the code are display routines, floppy-disc sector reading
+; and file loading from the UNIX file system.  Pretty clear that it is
+; dealing with a classic inode file system with pointers to direct blocks,
+; indirect blocks and double-indrect blocks.  The disassembly glosses over
+; the details but file-system specifics could be gleaned.  Wikipedia entry
+; on inode pointer structure will help in understanding:
+;	https://en.wikipedia.org/wiki/Inode_pointer_structure
+;
+; Details of the floppy disk sector loading and how file system blocks
+; map to floppy track and sector have not been exposed.
+;
+; The console display code is clearly related to that in diskutil and z80ctl.
+; More like that in diskutil but perhaps even less functionality.
 
 		org	$80
 port_shadow:	defs	$100
 
-sh_a0		equ	$120	; port shadow for $A0 - speaker
-sh_de		equ	$15e	; port shadow for $DE - tranfer control latch
-sh_df		equ	$15f	; port shadow for $DF - upper address latch
+sh_a0		equ	$120	; $A0 - speaker
+sh_de		equ	$15e	; $DE - tranfer control latch
+sh_df		equ	$15f	; $DF - upper address latch
+sh_e5		equ	$165	; $E5 - FDC track but not always used
+sh_ef		equ	$16f	; $EF - floppy select
 
+inode_sector	equ	$181	; storage of inode data (512 bytes)
+tmp_sector	equ	$381	; tmp for when loading to 68k
+idx_sector	equ	$581	; sector of indexes
+file_sector	equ	$781	; current data sector of file (512 bytes)
+file_idx	equ	$981	; 13 x 4 byte indexes to disk blocks
 
 		org	00e00h
 		ascii	'Tue Mar  3 13:51:14 CST 1987',10,0
@@ -45,17 +62,18 @@ v_waitkey:	jp	waitkey
 
 v_printimm:	jp	printimm
 
-		jp	_1200
+		jp	puthex_spc
 
-		jp	_1221
+		jp	puthex16_spc
 
 		jp	pal_ntsc_detect
 
 v_print:	jp	print
 
-_101c:		jp	_1243
+v_fdc_read_sector:
+		jp	fdc_read_sector
 
-_101f:		jp	_12de
+v_uh_fdc_t0s1:	jp	uh_fdc_t0s1
 
 v_getline:	jp	getline
 
@@ -348,64 +366,78 @@ print:		ld	a,(hl)
 		call	putc
 		jr	print
 
-_1200:		push	af
-		ld	a,03dh
+; Display A register as "=HEX "
+
+puthex_spc:	push	af
+		ld	a,'='
 		call	putc
 		pop	af
 		push	af
-		call	_1212
+		call	puthex
 		ld	a,020h
 		call	putc
 		pop	af
 		ret	
 
-_1212:		push	af
+; Display A register in hexadecimal.
+
+puthex:		push	af
 		rrca	
 		rrca	
 		rrca	
 		rrca	
-		call	_121b
+		call	hex1
 		pop	af
-_121b:		call	_123a
+hex1:		call	hexdig
 		jp	putc
 
-_1221:		push	af
-		ld	a,03dh
+; Display HL register as "=HEX "
+
+puthex16_spc:	push	af
+		ld	a,'='
 		call	putc
-		call	_1231
-		ld	a,020h
+		call	puthex16
+		ld	a,' '
 		call	putc
 		pop	af
 		ret	
 
-_1231:		push	hl
+; Display HL register in hexadecimal.
+
+puthex16:	push	hl
 		ld	a,h
-_1233:		call	_1212
+		call	puthex
 		pop	hl
 		ld	a,l
-		jr	_1212
+		jr	puthex
 
-_123a:		and	00fh
+; Convert low nybble of A into ASCII hexadecimal '0' .. '9' 'A' .. 'F'
+
+hexdig:		and	00fh
 		add	a,090h
 		daa	
 		adc	a,040h
 		daa	
 		ret	
 
-_1243:		push	bc
+; Wildly guessing this will read track H, sector L from floppy drive.
+; Reads to buffer at DE.
+
+fdc_read_sector:
+		push	bc
 		push	de
 		push	hl
 		ex	de,hl
 		ld	(out_F8_1+7),hl
 		ld	hl,out_F8_0
 		ld	bc,004f8h
-		otir	
+		otir			; have DMA do something
 		ld	hl,00010h
 		add	hl,de
 		ld	a,l
 		and	00fh
 		inc	a
-		out	(0e6h),a
+		out	(0e6h),a	; FDC sector
 		add	hl,hl
 		add	hl,hl
 		in	a,(0e0h)
@@ -420,51 +452,51 @@ _1269:		and	040h
 		or	080h
 		xor	040h
 		ld	b,a
-		ld	a,(0016fh)
+		ld	a,(sh_ef)
 		and	00fh
 		or	b
-		out	(0efh),a
-		ld	(0016fh),a
+		out	(0efh),a	; FDC select
+		ld	(sh_ef),a
 		add	hl,hl
 		ld	b,005h
 _127e:		dec	b
-		call	z,_1407
-		in	a,(0e5h)
+		call	z,v_hrdioe
+		in	a,(0e5h)	; FDC track
 		cp	h
 		jr	z,_129e
 		ld	a,h
-		out	(0e7h),a
+		out	(0e7h),a	; FDC data register
 		ld	a,(00065h)
 		or	01ch
-		out	(0e4h),a
+		out	(0e4h),a	; FDC command register (seek?)
 _1291:		in	a,(0e0h)
 		and	001h
 		jr	z,_1291
-		in	a,(0e4h)
+		in	a,(0e4h)	; FDC status register
 		and	098h
 		jp	nz,_127e
 _129e:		ld	b,005h
 _12a0:		dec	b
-		call	z,_1407
+		call	z,v_hrdioe
 		push	hl
 		push	bc
 		ld	hl,out_F8_1
 		ld	bc,00cf8h
-		otir	
+		otir			; DMA do something
 		pop	bc
 		pop	hl
 		ld	a,080h
-		out	(0e4h),a
+		out	(0e4h),a	; FDC command register
 _12b4:		in	a,(0e0h)
 		and	001h
-		jr	z,_12b4
-		in	a,(0e4h)
+		jr	z,_12b4		; wait for FDC interrupt
+		in	a,(0e4h)	; FDC status register
 		and	09ch
 		jr	nz,_12a0
 		push	af
 		ld	hl,out_F8_0
 		ld	bc,004f8h
-		otir	
+		otir			; DMA do something
 		pop	af
 		pop	hl
 		pop	de
@@ -474,39 +506,44 @@ _12b4:		in	a,(0e0h)
 out_F8_0:	defb	0c3h,083h,08bh,0afh
 out_F8_1:	defb	06dh,0e7h,000h,002h,02ch,010h,0cdh,000h,000h,08ah,0cfh,087h
 
-_12de:		push	hl
+; Talking to the floppy, surely, but will display a HRDIOE message if it fails.
+; Maybe that means "HaRD I/O Error" rather than "HaRD drive I/O Error".
+
+; Tenatively saying this seeks the floppy to track 0, side 1.
+
+uh_fdc_t0s1:	push	hl
 		ld	a,04eh
-		ld	(0016fh),a
-		out	(0efh),a
+		ld	(sh_ef),a
+		out	(0efh),a	; FM, side 1, drive 0
 		ld	a,0d8h
-		out	(0e4h),a
+		out	(0e4h),a	; FDC command
 		ld	a,0d0h
-		out	(0e4h),a
+		out	(0e4h),a	; FDC command
 		ld	hl,003e8h
 _12f1:		dec	hl
 		ld	a,h
 		or	l
 		jr	nz,_12f1
-		in	a,(0e7h)
-		in	a,(0e0h)
+		in	a,(0e7h)	; FDC data register
+		in	a,(0e0h)	; clear FDC error?
 		ld	hl,00000h
 _12fd:		dec	hl
 		ld	a,h
 		or	l
-		call	z,_1407
-		in	a,(0e4h)
+		call	z,v_hrdioe	; error on timeout
+		in	a,(0e4h)	; FDC status (clear FDC intr?)
 		and	080h
-		jr	nz,_12fd
+		jr	nz,_12fd	; keep trying if not ready
 		ld	a,(00065h)
 		or	008h
-		out	(0e4h),a
+		out	(0e4h),a	; FDC command
 _1310:		in	a,(0e0h)
 		and	001h
-		jr	z,_1310
-		in	a,(0e4h)
+		jr	z,_1310		; wait until FDC interrupt signalled.
+		in	a,(0e4h)	; FDC status (clear FDC intr?)
 		ld	a,000h
-		ld	(00165h),a
-		out	(0e5h),a
+		ld	(sh_e5),a
+		out	(0e5h),a	; select track 0
 		pop	hl
 		ret	
 
@@ -561,7 +598,7 @@ _1364:		ld	b,a
 		cp	002h
 		jr	z,_137d
 		cp	'?'
-		jr	z,_139b
+		jr	z,print_help
 		cp	004h
 		jr	nz,_1323
 		ld	a,c
@@ -585,15 +622,15 @@ _138f:		call	printimm
 		djnz	_138f
 		jr	getline
 
-_139b:		push	ix
-_139d:		ld	a,(ix+00h)
+print_help:	push	ix
+phlp:		ld	a,(ix)
 		or	a
-		jp	z,_13ab
+		jp	z,phlpdn
 		call	putc
 		inc	ix
-		jr	_139d
+		jr	phlp
 
-_13ab:		pop	ix
+phlpdn:		pop	ix
 		jp	getline
 
 _13b0:		push	de
@@ -618,12 +655,13 @@ _13be:		pop	de
 
 		ascii	'DIAG'
 ; TODO: This entry point is just a guess.  Boot ROM will tell us for sure.
-_start:		di	
-		jr	_140a
+start:
+restart:	di	
+		jr	splash
 
-_1407:		jp	_198d
+v_hrdioe:	jp	hrdioe
 
-_140a:		ld	sp,01b31h
+splash:		ld	sp,01b31h
 		call	v_printimm
 		ascii	'Tandy 68000/XENIX Boot      Version is 3(31)  3-Mar-87 ',13,10,'Copyright 1987 Tandy Corporation.  All Rights Reserved.',13,10,13,10,13,10,0
 		ld	a,0c9h		; "ret" opcode
@@ -695,21 +733,21 @@ _153e:		ld	a,(de)
 		inc	hl
 		jr	nz,_153e
 _1545:		ld	hl,kernel_name
-		call	_16a8
+		call	cr_read_file
 		jr	nz,_156d
-		ld	a,(_1622)
+		ld	a,(file_type)
 		or	a
-		jr	z,_1564
+		jr	z,_1564		; skip Z80 ctl if "kernel" was Z-80
 		ld	hl,z80ctl_name
-		call	_16b1
+		call	read_file
 		jr	nz,_156d
-		ld	a,(_1622)
+		ld	a,(file_type)
 		or	a
-		jr	nz,_1587
-		call	_1625
+		jr	nz,_1587	; z80ctl better not be a 68k file
+		call	continue_prompt
 _1564:		ld	a,000h
 		ld	(00077h),a	; Hmmm, telling z80ctl someting
-		ld	hl,(_1623)
+		ld	hl,(z80ctl_entry)
 		jp	(hl)
 
 _156d:		call	v_printimm
@@ -731,61 +769,82 @@ default_z80ctl_name:
 		ascii	'z80ctl',0
 kernel_boot_help_msg:
 		ascii	'?Press <Enter> to boot xenix, or enter one of the',13,10,'following:',9,'xenix',9,9,'diskutil',13,10,'Xenix Boot> ',0
-_161f:		nop	
+
+; IX points here during file load.
+; Frist 3 bytes are load address (24 bits needed for 68k loads).
+; 3rd byte is flag to indicate z80/68k load.
+
+f_load0		equ	0
+f_load1		equ	1
+f_load2		equ	2
+f_type		equ	3
+
+file_info:	nop	
 		nop	
 		nop	
-_1622:		nop	
-_1623:		nop	
-		nop	
-_1625:		call	v_printimm
+file_type:	nop	
+
+z80ctl_entry:	word	0
+
+continue_prompt:
+		call	v_printimm
 		ascii	'System loaded ...',0
-_163a:		call	v_printimm
+cp_again:	call	v_printimm
 		ascii	13,10,'Change root disk if desired;',0
 		call	v_printimm
 		ascii	13,10,'type <enter> to proceed or <break> to abort ',0
 		call	v_waitkey
-		cp	003h
-		jr	z,_16a0
-		cp	00dh
-		jr	nz,_163a
+		cp	3
+		jr	z,abort
+		cp	13
+		jr	nz,cp_again
 		call	v_printimm
 		ascii	13,10,0
 		ret	
 
-_16a0:		call	v_printimm
+abort:		call	v_printimm
 		ascii	12,0
-		jp	_start
+		jp	restart
 
-_16a8:		call	v_printimm
+; Returns NZ if error, Z otherwise.
+
+cr_read_file:	call	v_printimm
 		ascii	13,10,0
 		call	v_putc
-_16b1:		ld	ix,_161f
-		call	_101f
-		call	_170c
+read_file:	ld	ix,file_info
+		call	v_uh_fdc_t0s1
+		call	open_file
 		jr	nz,_1705
-		call	_18ae
-		ld	de,00781h
-		call	_184c
+		call	fdc_read_inode
+		ld	de,file_sector
+		call	fd_read_block
 		jr	nz,_1705
-		call	_1741
+		call	process_header
+		; Here we're just reading the file data.
+		; First there are 9 more indices which point to data blocks
+		; so read them each in turn.
 		ld	b,009h
 		call	_182d
 		jr	nz,_1704
-		ld	de,00581h
-		call	_184c
+		; Next index is 1-level indirect so load that block of indices
+		; and then go through all 128 from the sector.
+		ld	de,idx_sector
+		call	fd_read_block
 		jr	nz,_1704
 		ex	de,hl
 		ld	b,080h
 		call	_182d
 		jr	nz,_1704
 		ex	de,hl
-		ld	de,00781h
-		call	_184c
+		; Finally we end up with a 2-level indirect where we point
+		; to a block of pointers to block of pointers to data sectors.
+		ld	de,file_sector
+		call	fd_read_block
 		jr	nz,_1704
 		ex	de,hl
 		ld	b,080h
-_16ee:		ld	de,00581h
-		call	_184c
+_16ee:		ld	de,idx_sector
+		call	fd_read_block
 		jr	nz,_1704
 		push	bc
 		push	hl
@@ -803,11 +862,14 @@ _1705:		push	af
 		pop	af
 		ret	
 
-_170c:		ld	(_173f),hl
-		ld	hl,00002h
-		call	_18ae
-_1715:		ld	de,00781h
-		call	_184c
+; Read through the the root directory and "open" the file by returning
+; its inode number in HL.  Return NZ if not found.
+
+open_file:	ld	(_173f),hl
+		ld	hl,2			; root directory inode
+		call	fdc_read_inode
+_1715:		ld	de,file_sector
+		call	fd_read_block
 		ret	nz
 		push	hl
 		ex	de,hl
@@ -818,7 +880,7 @@ _1720:		ld	d,(hl)
 		inc	hl
 		ld	a,e
 		or	d
-		jr	z,_1733
+		jr	z,_1733		; 0 inode means directory entry empty
 		push	de
 		ld	de,(_173f)
 		call	strcmp
@@ -834,93 +896,95 @@ _173c:		pop	hl
 		ex	de,hl
 		ret	
 
-_173f:		nop	
-		nop	
-_1741:		push	bc
+_173f:		word	0
+
+; TODO - can determine what most of the header bytes mean.
+
+process_header:	push	bc
 		push	de
 		push	hl
-		ld	(ix+00h),000h
-		ld	(ix+01h),000h
-		ld	(ix+02h),000h
-		ld	(ix+03h),0ffh
-		ld	de,(00781h)
+		ld	(ix+f_load0),0
+		ld	(ix+f_load1),0
+		ld	(ix+f_load2),0
+		ld	(ix+f_type),$ff	; file_type 68k
+		ld	de,(file_sector)
 		ld	hl,00602h
 		or	a
 		sbc	hl,de
-		call	nz,_198d
-		ld	bc,00020h
-		ld	de,(00783h)
+		call	nz,hrdioe	; error if file does not start with $0206
+		ld	bc,00020h	; minimal header size
+		ld	de,(file_sector + 2)
 		ld	h,e
-		ld	l,d
+		ld	l,d		; little endian extra header space?
 		add	hl,bc
 		ld	b,h
-		ld	c,l
-		ld	a,(0079dh)
+		ld	c,l		; BC is header size
+		ld	a,(file_sector + 28)
 		and	03fh
 		cp	005h
-		jr	z,_1795
+		jr	z,_1795		; type 5 must be 58k kernel
 		cp	006h
-		call	nz,_198d
-		ld	hl,(007abh)
-		ld	(ix+00h),h
-		ld	(ix+01h),l
-		ld	(ix+02h),000h
-		ld	(ix+03h),000h
-		ld	de,(0079bh)
+		call	nz,hrdioe	; must be type 5 or 6
+		ld	hl,(file_sector + 42)
+		ld	(ix+f_load0),h	; saving load address
+		ld	(ix+f_load1),l
+		ld	(ix+f_load2),0
+		ld	(ix+f_type),0	; file_type Z-80
+		ld	de,(file_sector + 26)
 		ld	h,e
-		ld	l,d
-		ld	(_1623),hl
+		ld	l,d		; Z-80 execution address in little endian
+		ld	(z80ctl_entry),hl
 _1795:		ld	hl,00200h
 		or	a
 		sbc	hl,bc
-		push	hl
-		ld	hl,00781h
-		add	hl,bc
+		push	hl		; data bytes left in sector
+		ld	hl,file_sector
+		add	hl,bc		; start of data
 		pop	bc
 		push	bc
-		bit	0,(ix+03h)
-		jr	z,_180b
+		bit	0,(ix+f_type)	; file_type
+		jr	z,_180b		; if Z-80 type then no PAL check
 		push	bc
 		push	hl
 		ld	bc,(08000h)
-		ld	de,_1233+1
+		ld	de,$1234
 		ld	(08000h),de
 		ld	hl,(08000h)
 		or	a
 		sbc	hl,de
-		jr	nz,_17f9
+		jr	nz,no68k	; can't read 68000 mem?
 		ld	a,(sh_de)
-		or	001h
+		or	001h		; enable burst mode
 		out	(0deh),a
 		ld	hl,(08000h)
 		and	0feh
 		out	(0deh),a
 		or	a
-		sbc	hl,de
+		sbc	hl,de		; if != 0 then PAL is swapping, not bursting
 		ld	(08000h),bc
 ; Make this "jr _1804" to disable check for new PAL with burst mode.
 		jr	z,_1804
 		call	bughlt
 		ascii	'NewPal - Hardware Change Required',0
-_17f9:		call	bughlt
+no68k:		call	bughlt
 		ascii	'No68k',13,10,0
 _1804:		pop	hl
 		pop	bc
-		call	_1931
+		call	copy_to_68k	; rest of sector to 68k
 		jr	_1813
 
-_180b:		ld	e,(ix+00h)
-		ld	d,(ix+01h)
-		ldir	
+_180b:		ld	e,(ix+f_load0)	; get load address
+		ld	d,(ix+f_load1)
+		ldir			; copy in data from sector
 _1813:		pop	bc
-		ld	l,(ix+00h)
-		ld	h,(ix+01h)
-		add	hl,bc
-		ld	(ix+00h),l
-		ld	(ix+01h),h
-		ld	a,(ix+02h)
-		adc	a,000h
-		ld	(ix+02h),a
+		ld	l,(ix+f_load0)
+		ld	h,(ix+f_load1)
+		add	hl,bc		; new load address
+		ld	(ix+f_load0),l
+		ld	(ix+f_load1),h
+		ld	a,(ix+f_load2)
+		adc	a,0
+		ld	(ix+f_load2),a
 		pop	hl
 		pop	de
 		pop	bc
@@ -952,7 +1016,12 @@ _1847:		xor	0ffh
 		pop	de
 		ret	
 
-_184c:		push	bc
+; Guessing we take the 4 byte index at HL and read the associated
+; sector into a buffer at DE.
+; A 0 index results in Z=0 (NZ) on return.
+; Otherwise returns Z indicating successful read.
+
+fd_read_block:	push	bc
 		push	de
 		push	de
 		inc	hl
@@ -971,9 +1040,9 @@ _184c:		push	bc
 		ex	de,hl
 		pop	de
 		jr	z,_1865
-		call	_101c
+		call	v_fdc_read_sector
 		or	0ffh
-_1865:		xor	0ffh
+_1865:		xor	0ffh	; if jp then Z=0, fall through gives Z=1
 		pop	hl
 		pop	de
 		pop	bc
@@ -982,30 +1051,30 @@ _1865:		xor	0ffh
 _186b:		push	bc
 		push	de
 		push	hl
-		bit	0,(ix+03h)
-		jr	z,_1883
-		ld	de,00381h
-		call	_101c
+		bit	0,(ix+f_type)	; file_type
+		jr	z,_1883		; jump if Z80
+		ld	de,tmp_sector	; for 68K must read to temp sector
+		call	v_fdc_read_sector
 		ld	bc,00200h
 		ex	de,hl
-		call	_1931
+		call	copy_to_68k	; and then load it into 68K memory
 		jr	_188c
 
-_1883:		ld	e,(ix+00h)
-		ld	d,(ix+01h)
-		call	_101c
-_188c:		ld	l,(ix+01h)
-		ld	h,(ix+02h)
-		ld	bc,00002h
-		add	hl,bc
-		ld	(ix+01h),l
-		ld	(ix+02h),h
+_1883:		ld	e,(ix+f_load0)	; Z-80 can read directly to load address
+		ld	d,(ix+f_load1)
+		call	v_fdc_read_sector
+_188c:		ld	l,(ix+f_load1)
+		ld	h,(ix+f_load2)
+		ld	bc,2
+		add	hl,bc		; add 512 to load address
+		ld	(ix+f_load1),l
+		ld	(ix+f_load2),h
 		pop	hl
 		pop	de
 		pop	bc
 		ret	
 
-_18a0:		xor	a
+expand_idx:	xor	a
 		ld	(de),a
 		inc	de
 		push	bc
@@ -1013,36 +1082,46 @@ _18a0:		xor	a
 		ldi	
 		ldi	
 		pop	bc
-		djnz	_18a0
+		djnz	expand_idx
 		ret	
 
-_18ae:		dec	hl
+; Wildly guessing this reads inode HL from the floppy drive.
+; Looks like we have 512 byte sectors and inodes are 64 bytes
+; each.  Thus we divide by 8 to map from inode # to sector.
+; And (inode# * 64) % 512 gives the position in the sector.
+;
+; Appears to ignore the first 12 bytes of the inode.  Then
+; reads 13 sector pointers, 24 bits each.
+;
+; Returns HL pointing to the 13 sector pointers.
+
+fdc_read_inode:	dec	hl		; From 1-based to 0 based index
 		push	hl
 		srl	h
 		rr	l
 		srl	h
 		rr	l
 		srl	h
-		rr	l
+		rr	l		; HL /= 8
 		inc	hl
-		inc	hl
+		inc	hl		; HL += 2
 		xor	a
-		ld	de,00181h
-		call	_101c
+		ld	de,inode_sector
+		call	v_fdc_read_sector
 		pop	hl
 		add	hl,hl
 		add	hl,hl
 		add	hl,hl
 		add	hl,hl
-		add	hl,hl
+		add	hl,hl		; HL *= 32
 		ld	h,000h
-		add	hl,hl
-		ld	de,0018dh
+		add	hl,hl		; HL *= 64 % 512
+		ld	de,inode_sector + 12
 		add	hl,de
 		ld	b,00dh
-		ld	de,00981h
+		ld	de,file_idx
 		push	de
-		call	_18a0
+		call	expand_idx
 		pop	hl
 		ret	
 
@@ -1061,21 +1140,18 @@ _18dd:		in	a,(0cfh)
 
 a_reti:		reti	
 
-; Follow big-endian 32 bit pointer at PG:ix
-; 
-; Returns with PG:bc pointing at the new location.
-; 
-; Only 23 bits are significant so it ignores the highest byte at (ix+0).
+; Load 24 bit pointer at IX into PG:bc.
+; Unlike z80ctl, this is a little-endian pointer.
 
-deref_PG_ix:	push	bc
-		ld	b,(ix+01h)
-		ld	c,(ix+00h)
+load24:		push	bc
+		ld	b,(ix+f_load1)
+		ld	c,(ix+f_load0)
 		set	7,b
 		res	6,b
 		push	bc
-		ld	b,(ix+01h)
+		ld	b,(ix+f_load1)
 		rl	b
-		ld	a,(ix+02h)
+		ld	a,(ix+f_load2)
 		rl	a
 		ld	(sh_df),a
 		out	(0dfh),a
@@ -1103,11 +1179,13 @@ page_inc:	ld	a,(sh_de)
 		out	(0dfh),a
 		ret	
 
-_1931:		push	ix
+; Copy BC bytes from HL to 24 bit pointer at IX.
+
+copy_to_68k:	push	ix
 		push	bc
 		push	de
 		push	hl
-		call	deref_PG_ix
+		call	load24
 		push	ix
 		pop	de
 _193c:		push	hl
@@ -1175,7 +1253,7 @@ _1984:		sbc	hl,de
 _198b:		add	hl,de
 		ret	
 
-_198d:		call	bughlt
+hrdioe:		call	bughlt
 		ascii	"HRDIOE - Can't load Xenix",0
 
 setup_hardware:	in	a,(0feh)
@@ -1313,7 +1391,7 @@ unknown_intr:	push	af
 		ei	
 		reti	
 
-		ascii	'fdiv'
+		ascii	'fdiv'	; Frank Durda IV's "signature"
 
 ; These $e5 bytes are typically seen in a new sector and surely have
 ; no special meaning just padding out to a sector boundary.  So
@@ -1322,4 +1400,4 @@ unknown_intr:	push	af
 
 		dc	256-low($),$e5
 
-		end	_start
+		end	start

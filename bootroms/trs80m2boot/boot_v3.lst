@@ -1,0 +1,1434 @@
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 1 - 2/22/2012 20:55:38
+
+
+       1/       0 :                     ; TRS-80 Model II boot ROM, rev 3, reconstructed source code
+       2/       0 :                     ; Copyright 2012 Eric Smith <eric@brouhaha.com>
+       3/       0 :                     ; 19-FEB-2012
+       4/       0 :                     ; Based in part on a disassembly by Fred Jan Kraan
+       5/       0 :                     
+       6/       0 :                     ; This program is free software: you can redistribute it and/or modify
+       7/       0 :                     ; it under the terms of version 3 of the GNU General Public License as
+       8/       0 :                     ; published by the Free Software Foundation.
+       9/       0 :                     ;
+      10/       0 :                     ; This program is distributed in the hope that it will be useful, but
+      11/       0 :                     ; WITHOUT ANY WARRANTY; without even the implied warranty of
+      12/       0 :                     ; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+      13/       0 :                     ; General Public License for more details.
+      14/       0 :                     ;
+      15/       0 :                     ; You should have received a copy of the GNU General Public License
+      16/       0 :                     ; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+      17/       0 :                     
+      18/       0 :                     ; This source code uses long symbols, won't assemble with some common
+      19/       0 :                     ; assemblers that only consider the first six characters to be
+      20/       0 :                     ; significant.  It will assemble with "Macro Assembler AS":
+      21/       0 :                     ;     http://www.alfsembler.de/
+      22/       0 :                     
+      25/       0 :                     	listing	on
+      26/       0 :                     
+      27/       0 :                     	org	rom_start
+      28/       0 :                     
+      29/       0 : F3                  	di
+      30/       1 :                     
+      31/       1 : 31 00 28            	ld	sp,hd_stack_init
+      32/       4 :                     
+      33/       4 : 3E 80               	ld	a,nmi_ram_en_video_ram	; enable video, video RAM,
+      34/       6 : D3 FF               	out	(nmi_ram_reg),a		; and select memory bank 0
+      35/       8 :                     
+      36/       8 :                     ; set all screen memory to inverse spaces
+      37/       8 : 01 FF 07            	ld	bc,screen_size-1		; number of chars for block move
+      38/       B : 11 FE FF            	ld	de,screen_start+screen_size-2	; next-to-last loc
+      39/       E : 21 FF FF            	ld	hl,screen_start+screen_size-1	; last loc
+      40/      11 : 36 A0               	ld	(hl),' '+inverse		; set last char
+      41/      13 : ED B8               	lddr					; copy downward to start
+      42/      15 :                     
+      43/      15 :                     ; init CRTC
+      44/      15 : 01 FC 0F            	ld	bc,((crtc_init_table_len-1)*100h)+crtc_addr_reg
+      45/      18 : 21 11 03            	ld	hl,crtc_init_table+crtc_init_table_len-1
+      46/      1B :                     crtc_init_loop:
+      47/      1B : 7E                  	ld	a,(hl)
+      48/      1C : ED 41               	out	(c),b			; write CRTC addr reg
+      49/      1E : D3 FD               	out	(crtc_data_reg),a
+      50/      20 : 2B                  	dec	hl
+      51/      21 : 05                  	dec	b
+      52/      22 : F2 1B 00            	jp	p,crtc_init_loop
+      53/      25 :                     
+      54/      25 :                     ; ROM checksum test, only first 512 bytes
+      55/      25 : AF                  	xor	a
+      56/      26 : 01 19 03            	ld	bc,rom_end-rom_start	; byte count
+      57/      29 : 21 00 00            	ld	hl,rom_start
+      58/      2C :                     rom_checksum_loop:
+      59/      2C : 86                  	add	a,(hl)
+      60/      2D : 57                  	ld	d,a
+      61/      2E : 23                  	inc	hl
+      62/      2F : 0B                  	dec	bc
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 2 - 2/22/2012 20:55:38
+
+
+      63/      30 : 78                  	ld	a,b
+      64/      31 : B1                  	or	c
+      65/      32 : 7A                  	ld	a,d
+      66/      33 : 20 F7               	jr	nz,rom_checksum_loop
+      67/      35 : B7                  	or	a
+      68/      36 : C2 29 02            	jp	nz,ck_err
+      69/      39 :                     
+      70/      39 :                     ; rudimentary Z80 CPU test
+      71/      39 : 3E 55               	ld	a,055h
+      72/      3B : 2F                  	cpl
+      73/      3C : B7                  	or	a
+      74/      3D : A7                  	and	a
+      75/      3E : 47                  	ld	b,a
+      76/      3F : 48                  	ld	c,b
+      77/      40 : 51                  	ld	d,c
+      78/      41 : 5A                  	ld	e,d
+      79/      42 : 63                  	ld	h,e
+      80/      43 : 6C                  	ld	l,h
+      81/      44 : 2C                  	inc	l
+      82/      45 : 2D                  	dec	l
+      83/      46 : EB                  	ex	de,hl
+      84/      47 : 08                  	ex	af,af'
+      85/      48 : 7B                  	ld	a,e
+      86/      49 : D9                  	exx
+      87/      4A : 47                  	ld	b,a
+      88/      4B : 48                  	ld	c,b
+      89/      4C : 51                  	ld	d,c
+      90/      4D : 5A                  	ld	e,d
+      91/      4E : 63                  	ld	h,e
+      92/      4F : 6C                  	ld	l,h
+      93/      50 : 7D                  	ld	a,l
+      94/      51 : ED 47               	ld	i,a
+      95/      53 : ED 57               	ld	a,i
+      96/      55 : 6F                  	ld	l,a
+      97/      56 : 08                  	ex	af,af'
+      98/      57 : BD                  	cp	l
+      99/      58 : C2 2E 02            	jp	nz,z8_err
+     100/      5B :                     
+     101/      5B :                     ; rudimentary RAM test - can't test RAM overlaid by ROM
+     102/      5B : 01 00 70            	ld	bc,ram_size-max_rom_size
+     103/      5E : 21 00 10            	ld	hl,max_rom_size
+     104/      61 : 54                  	ld	d,h
+     105/      62 : 5D                  	ld	e,l
+     106/      63 :                     ram_test_loop:
+     107/      63 : 1A                  	ld	a,(de)
+     108/      64 : 2F                  	cpl
+     109/      65 : 12                  	ld	(de),a
+     110/      66 : BE                  	cp	(hl)
+     111/      67 : 2F                  	cpl
+     112/      68 : 77                  	ld	(hl),a
+     113/      69 : C2 33 02            	jp	nz,mf_err
+     114/      6C : ED A0               	ldi
+     115/      6E : EA 63 00            	jp	pe,ram_test_loop
+     116/      71 :                     
+     117/      71 :                     ; clear keyboard
+     118/      71 : 16 C8               	ld	d,200
+     119/      73 :                     clear_keyboard_loop:
+     120/      73 : DB FF               	in	a,(nmi_status_reg)
+     121/      75 : CB 7F               	bit	nmi_status_bit_kbd_int,a
+     122/      77 : 28 02               	jr	z,clear_kbd_no_key
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 3 - 2/22/2012 20:55:38
+
+
+     123/      79 : DB FC               	in	a,(kbd_data_reg)
+     124/      7B :                     clear_kbd_no_key:
+     125/      7B : 01 80 00            	ld	bc,128
+     126/      7E : CD 82 02            	call	delay_bc
+     127/      81 : 15                  	dec	d
+     128/      82 : 20 EF               	jr	nz,clear_keyboard_loop
+     129/      84 :                     
+     130/      84 :                     ; reset HDC and check for drive presence
+     131/      84 : AF                  	xor	a
+     132/      85 : D3 C1               	out	(hdc_control_reg),a
+     133/      87 : 3E 10               	ld	a,hdc_control_soft_reset
+     134/      89 : D3 C1               	out	(hdc_control_reg),a
+     135/      8B :                     
+     136/      8B :                     ; Earlier versions of the boot ROM didn't enable interrupt and DMA.  Not sure
+     137/      8B :                     ; why this is a good idea.
+     138/      8B : 3E 0F               	ld	a,hdc_control_deven+hdc_control_wait_enable+hdc_control_intrq_enable+hdc_control_dma_enable
+     139/      8D : D3 C1               	out	(hdc_control_reg),a
+     140/      8F :                     
+     141/      8F : DB C2               	in	a,(hdc_drive_id_45)	; check ID of drive 4
+     142/      91 : E6 0F               	and	00fh
+     143/      93 : CA 52 01            	jp	z,floppy_boot		;   zero, no drive 4
+     144/      96 :                     
+     145/      96 :                     hd_boot:
+     146/      96 : 16 15               	ld	d,21	; loop up to 21 times waiting for controller ready
+     147/      98 :                     hd_wait_ready:
+     148/      98 : CD 82 02            	call	delay_bc
+     149/      9B :                     
+     150/      9B :                     ; Check if controller is ready
+     151/      9B :                     ; POSSIBLE BUG!  WD1000 documentation says that no other bits or registers
+     152/      9B :                     ; are valid if the busy bit of the status register is set, so it should
+     153/      9B :                     ; be checked here.
+     154/      9B : DB CF               	in	a,(hdc_status_reg)
+     155/      9D : CB 77               	bit	hdc_status_bit_ready,a
+     156/      9F : 20 0B               	jr	nz,hd_is_ready
+     157/      A1 :                     
+     158/      A1 :                     ; HD not ready. Is the user trying to abort the HD boot?
+     159/      A1 : CD A2 02            	call	check_escape_key	; escape key pressed?
+     160/      A4 : CA 52 01            	jp	z,floppy_boot		;   yes, skip HD and boot FD
+     161/      A7 : 15                  	dec	d
+     162/      A8 : 20 EE               	jr	nz,hd_wait_ready
+     163/      AA : 18 61               	jr	ht_err
+     164/      AC :                     
+     165/      AC :                     hd_is_ready:
+     166/      AC :                     ; try to seek to track 5
+     167/      AC : 3E 20               	ld	a,hdc_sdh_sect_size_512
+     168/      AE : D3 CE               	out	(hdc_size_drive_head_reg),a
+     169/      B0 : AF                  	xor	a
+     170/      B1 : D3 CD               	out	(hdc_cylinder_high_reg),a
+     171/      B3 : 3E 05               	ld	a,5
+     172/      B5 : D3 CC               	out	(hdc_cylinder_low_reg),a
+     173/      B7 : 3E 7F               	ld	a,hdc_command_seek+hdc_command_step_rate_7p5_ms
+     174/      B9 : D3 CF               	out	(hdc_command_reg),a
+     175/      BB : CD B1 02            	call	hd_wait_not_busy
+     176/      BE :                     	
+     177/      BE :                     ; restore
+     178/      BE : 3E 1F               	ld	a,hdc_command_restore+hdc_command_step_rate_7p5_ms
+     179/      C0 : D3 CF               	out	(hdc_command_reg),a
+     180/      C2 : CD B1 02            	call	hd_wait_not_busy
+     181/      C5 : 20 64               	jr	nz,hd_tr0_not_found
+     182/      C7 :                     
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 4 - 2/22/2012 20:55:38
+
+
+     183/      C7 : 21 00 00            	ld	hl,hd_load_addr	; start loading HD sectors into memory at 0000
+     184/      CA :                     			; if we load 17 sectors, they'll occupy 0000-21ff
+     185/      CA :                     			; we MUST load at least 9 sectors, because we can't
+     186/      CA :                     			; detect the end signature below 1000 since the
+     187/      CA :                     			; RAM from 0000-0fff is overlaid by this boot ROM
+     188/      CA : 01 CB 01            	ld	bc,(1*256)+hdc_sector_number_reg	; start w/ sector 1
+     189/      CD :                     
+     190/      CD :                     hd_read_sector:
+     191/      CD : 54                  	ld	d,h		; copy HL into DE for signature check
+     192/      CE : 5D                  	ld	e,l
+     193/      CF : ED 41               	out	(c),b		; write sector register
+     194/      D1 : 3E 20               	ld	a,hdc_command_read_sector_pio
+     195/      D3 : D3 CF               	out	(hdc_command_reg),a
+     196/      D5 : CD B1 02            	call	hd_wait_not_busy
+     197/      D8 : 20 37               	jr	nz,hd_err_from_err_reg
+     198/      DA :                     
+     199/      DA :                     hd_wait_for_drq:
+     200/      DA : DB CF               	in	a,(hdc_status_reg)
+     201/      DC : CB 5F               	bit	hdc_status_bit_data_request,a
+     202/      DE : 28 FA               	jr	z,hd_wait_for_drq
+     203/      E0 : CD A2 02            	call	check_escape_key
+     204/      E3 : 28 6D               	jr	z,floppy_boot
+     205/      E5 :                     
+     206/      E5 : 04                  	inc	b		; advance sector number
+     207/      E6 : C5                  	push	bc		; and save it for next iteration
+     208/      E7 : 3E 02               	ld	a,2
+     209/      E9 : 01 C8 00            	ld	bc,(0*256)+hdc_data_reg
+     210/      EC : ED B2               	inir
+     211/      EE : ED B2               	inir
+     212/      F0 :                     
+     213/      F0 : E5                  	push	hl			; check for end boot sig
+     214/      F1 : 21 D3 02            	ld	hl,hd_boot_end_sig
+     215/      F4 : 06 0E               	ld	b,hd_boot_end_sig_len
+     216/      F6 : CD 9A 02            	call	check_disk_signature
+     217/      F9 : E1                  	pop	hl
+     218/      FA : C1                  	pop	bc
+     219/      FB : 20 D0               	jr	nz,hd_read_sector	; end boot sig not found, continue read
+     220/      FD :                     
+     221/      FD : 01 00 00            	ld	bc,0
+     222/     100 : CD 82 02            	call	delay_bc
+     223/     103 : CD A2 02            	call	check_escape_key
+     224/     106 : 28 4A               	jr	z,floppy_boot
+     225/     108 :                     
+     226/     108 : AF                  	xor	a			; disable HD
+     227/     109 : D3 C1               	out	(hdc_control_reg),a
+     228/     10B :                     
+     229/     10B : EB                  	ex	de,hl			; jump to location after end sig
+     230/     10C : E9                  	jp	(hl)
+     231/     10D :                     
+     232/     10D :                     ht_err:
+     233/     10D : 1E 54               	ld	e,'T'
+     234/     10F : 18 26               	jr	hard_disk_err
+     235/     111 :                     
+     236/     111 :                     hd_err_from_err_reg:
+     237/     111 : CB 77               	bit	hdc_error_bit_crc_data,a
+     238/     113 : 1E 43               	ld	e,'C'
+     239/     115 : 20 20               	jr	nz,hard_disk_err
+     240/     117 :                     
+     241/     117 : CB 6F               	bit	hdc_error_bit_crc_id,a
+     242/     119 : 1E 49               	ld	e,'I'
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 5 - 2/22/2012 20:55:38
+
+
+     243/     11B : 20 1A               	jr	nz,hard_disk_err
+     244/     11D :                     
+     245/     11D : CB 67               	bit	hdc_error_bit_id_not_found,a
+     246/     11F : 1E 4E               	ld	e,'N'
+     247/     121 : 20 14               	jr	nz,hard_disk_err
+     248/     123 :                     
+     249/     123 : CB 57               	bit	hdc_error_bit_aborted_cmd,a
+     250/     125 : 1E 41               	ld	e,'A'
+     251/     127 : 20 0E               	jr	nz,hard_disk_err
+     252/     129 :                     
+     253/     129 : CB 4F               	bit	hdc_error_bit_track_0_not_found,a
+     254/     12B :                     hd_tr0_not_found:
+     255/     12B : 1E 30               	ld	e,'0'
+     256/     12D : 20 08               	jr	nz,hard_disk_err
+     257/     12F :                     
+     258/     12F : CB 47               	bit	hdc_error_bit_data_mark_not_found,a
+     259/     131 : 1E 4D               	ld	e,'M'
+     260/     133 : 20 02               	jr	nz,hard_disk_err
+     261/     135 :                     
+     262/     135 : 1E 44               	ld	e,'D'	; other error
+     263/     137 :                     
+     264/     137 :                     hard_disk_err:
+     265/     137 : 16 48               	ld	d,'H'
+     266/     139 : 21 9A FB            	ld	hl,0fb9ah
+     267/     13C : 72                  	ld	(hl),d
+     268/     13D : 23                  	inc	hl
+     269/     13E : 73                  	ld	(hl),e
+     270/     13F : 23                  	inc	hl
+     271/     140 : 36 20               	ld	(hl),' '
+     272/     142 :                     
+     273/     142 : 21 E1 02            	ld	hl,boot_err_msg
+     274/     145 : 11 8E FB            	ld	de,0fb8eh
+     275/     148 : 01 0C 00            	ld	bc,boot_err_msg_len
+     276/     14B : ED B0               	ldir
+     277/     14D :                     
+     278/     14D :                     wait_for_escape_key
+     279/     14D : CD A2 02            	call	check_escape_key
+     280/     150 : 20 FB               	jr	nz,wait_for_escape_key
+     281/     152 :                     
+     282/     152 :                     floppy_boot:
+     283/     152 : 31 00 20            	ld	sp,fd_stack_init
+     284/     155 : AF                  	xor	a
+     285/     156 : D3 C1               	out	(hdc_control_reg),a
+     286/     158 :                     
+     287/     158 :                     ; select drive 0, side 0
+     288/     158 : 3E 4E               	ld	a,fdc_sel_side_0+fdc_sel_dr_0
+     289/     15A : D3 EF               	out	(fdc_select_reg),a
+     290/     15C :                     
+     291/     15C :                     ; display "insert disk" message
+     292/     15C : 21 ED 02            	ld	hl,insert_disk_msg
+     293/     15F : 11 8E FB            	ld	de,0fb8eh
+     294/     162 : 01 11 00            	ld	bc,insert_disk_msg_len
+     295/     165 : ED B0               	ldir
+     296/     167 :                     
+     297/     167 :                     fd_wait_for_ready:
+     298/     167 : CD 88 02            	call	terminate_fdc_cmd
+     299/     16A : CB 7F               	bit	7,a
+     300/     16C : 20 F9               	jr	nz,fd_wait_for_ready
+     301/     16E :                     
+     302/     16E :                     ; clear screen (all 020h)
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 6 - 2/22/2012 20:55:38
+
+
+     303/     16E : 01 FF 07            	ld	bc,screen_size-1		; number of chars for block move
+     304/     171 : 11 FE FF            	ld	de,screen_start+screen_size-2	; next-to-last loc
+     305/     174 : 21 FF FF            	ld	hl,screen_start+screen_size-1	; last loc
+     306/     177 : 36 20               	ld	(hl),' '
+     307/     179 : ED B8               	lddr
+     308/     17B :                     
+     309/     17B : CD 88 02            	call	terminate_fdc_cmd
+     310/     17E :                     
+     311/     17E :                     ; step inward (toward 77) five tracks
+     312/     17E : 06 05               	ld	b,5				; step in count
+     313/     180 :                     fd_step_in_loop:
+     314/     180 : 3E 5B               	ld	a,fdc_cmd_step_in+fdc_cmd_update_track+fdc_cmd_head_load+fdc_cmd_step_rate_15ms
+     315/     182 : D3 E4               	out	(fdc_cmd_reg),a
+     316/     184 :                     
+     317/     184 :                     ; wait a while
+     318/     184 : C5                  	push	bc
+     319/     185 : 01 03 0C            	ld	bc,3075
+     320/     188 : CD 82 02            	call	delay_bc
+     321/     18B : C1                  	pop	bc
+     322/     18C :                     
+     323/     18C : 10 F2               	djnz	fd_step_in_loop
+     324/     18E :                     		
+     325/     18E : CD 88 02            	call	terminate_fdc_cmd
+     326/     191 :                     fd_restore:
+     327/     191 : 3E 0B               	ld	a,fdc_cmd_restore+fdc_cmd_head_load+fdc_cmd_step_rate_15ms
+     328/     193 : D3 E4               	out	(fdc_cmd_reg),a
+     329/     195 :                     
+     330/     195 :                     ; wait a long time, 8 times the maximum for delay_bc subroutine
+     331/     195 :                     ; BC value at this point is left over from lddr
+     332/     195 : 16 07               	ld	d,7
+     333/     197 :                     fd_restore_wait:
+     334/     197 : CD 82 02            	call	delay_bc
+     335/     19A : 15                  	dec	d
+     336/     19B : 20 FA               	jr	nz,fd_restore_wait
+     337/     19D :                     
+     338/     19D :                     ; check all the various error bits of the FDC status
+     339/     19D : DB E4               	in	a,(fdc_status_reg)
+     340/     19F : F5                  	push	af
+     341/     1A0 : EE 04               	xor	fdc_status_track_zero	; error when zero
+     342/     1A2 : E6 15               	and	fdc_status_seek_err+fdc_status_track_zero+fdc_status_busy
+     343/     1A4 : 20 74               	jr	nz,dc_err
+     344/     1A6 : F1                  	pop	af
+     345/     1A7 : CB 7F               	bit	fdc_status_bit_not_ready,a
+     346/     1A9 : 20 74               	jr	nz,d0_err
+     347/     1AB : CB 5F               	bit	fdc_status_bit_crc_err,a
+     348/     1AD : 20 75               	jr	nz,sc_err
+     349/     1AF :                     
+     350/     1AF :                     ; read the bootstrap code from track zero of the floppy (single density)
+     351/     1AF :                     fd_read_boot:
+     352/     1AF : 21 00 0E            	ld	hl,fd_load_addr	; HL = buffer
+     353/     1B2 : 11 28 1A            	ld	de,(fd_load_sector_count*256)+fd_retry_count
+     354/     1B5 :                     						; D = sector count
+     355/     1B5 :                     						; E = retry count
+     356/     1B5 : 01 01 80            	ld	bc,(fd_load_sector_size*256)+1	; B = sector size (128)
+     357/     1B8 :                     						; C = sector number (1)
+     358/     1B8 :                     
+     359/     1B8 : 3E 80               	ld	a,fdc_cmd_read_sector	; keep an FDC read command in A'
+     360/     1BA : 08                  	ex	af,af'
+     361/     1BB :                     
+     362/     1BB :                     fd_read_sector:
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 7 - 2/22/2012 20:55:38
+
+
+     363/     1BB : E5                  	push	hl		; save copies of the arguments
+     364/     1BC : D5                  	push	de
+     365/     1BD : C5                  	push	bc
+     366/     1BE :                     
+     367/     1BE : CD 88 02            	call	terminate_fdc_cmd	; ensure that FDC is ready for a cmd
+     368/     1C1 :                     
+     369/     1C1 : 79                  	ld	a,c			; give FDC the sector number
+     370/     1C2 : D3 E6               	out	(fdc_sector_reg),a
+     371/     1C4 :                     
+     372/     1C4 : 08                  	ex	af,af'			; give FDC command from A'
+     373/     1C5 : D3 E4               	out	(fdc_cmd_reg),a
+     374/     1C7 : 08                  	ex	af,af'
+     375/     1C8 :                     
+     376/     1C8 : CD 7F 02            	call	delay_bc_5
+     377/     1CB : C1                  	pop	bc			; get original sector size, number back
+     378/     1CC : C5                  	push	bc
+     379/     1CD :                     
+     380/     1CD : 0E E7               	ld	c,fdc_data_reg		; prepare for ini instruction
+     381/     1CF :                     
+     382/     1CF :                     fd_read_data_loop:
+     383/     1CF : DB E4               	in	a,(fdc_status_reg)	; is DRQ set
+     384/     1D1 : CB 4F               	bit	fdc_status_bit_drq,a
+     385/     1D3 : 28 04               	jr	z,fd_read_data_no_drq	; no, make sure we're still busy
+     386/     1D5 :                     
+     387/     1D5 : ED A2               	ini				; read a byte into buffer
+     388/     1D7 : 28 04               	jr	z,fd_read_data_done	; transfer complete?
+     389/     1D9 :                     
+     390/     1D9 :                     fd_read_data_no_drq:
+     391/     1D9 : CB 47               	bit	fdc_status_bit_busy,a	; still busy
+     392/     1DB : 20 F2               	jr	nz,fd_read_data_loop	;   yes, continue reading
+     393/     1DD :                     
+     394/     1DD :                     ; read command data transfer complete
+     395/     1DD :                     fd_read_data_done:
+     396/     1DD : C1                  	pop	bc			; restore original sector, sector count
+     397/     1DE : D1                  	pop	de			; etc.
+     398/     1DF :                     
+     399/     1DF : DB E4               	in	a,(fdc_status_reg)	; any errors?
+     400/     1E1 : E6 1C               	and	01ch
+     401/     1E3 : 28 0E               	jr	z,fd_read_ok		; no
+     402/     1E5 :                     
+     403/     1E5 :                     ; read error
+     404/     1E5 : E1                  	pop	hl			; restore original buffer pointer
+     405/     1E6 : 1D                  	dec	e			; any retries left?
+     406/     1E7 : 20 D2               	jr	nz,fd_read_sector	; yes, go do it agin
+     407/     1E9 :                     
+     408/     1E9 :                     ; read fail - retries exhausted
+     409/     1E9 : CB 67               	bit	fdc_status_bit_rec_not_found,a
+     410/     1EB : 20 4B               	jr	nz,tk_err
+     411/     1ED : CB 5F               	bit	fdc_status_bit_crc_err,a
+     412/     1EF : 20 33               	jr	nz,sc_err
+     413/     1F1 : 18 4A               	jr	ld_err
+     414/     1F3 :                     
+     415/     1F3 :                     fd_read_ok:
+     416/     1F3 : F1                  	pop	af			; discard original buffer pointer
+     417/     1F4 : 0C                  	inc	c			; increment sector number
+     418/     1F5 : 1E 28               	ld	e,fd_retry_count	; restore retry count
+     419/     1F7 : 15                  	dec	d			; decrement sector count
+     420/     1F8 : 20 C1               	jr	nz,fd_read_sector	; if more sectors, loop
+     421/     1FA :                     
+     422/     1FA : 21 E2 02            	ld	hl,fd_boot_sig_0
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 8 - 2/22/2012 20:55:38
+
+
+     423/     1FD : 11 00 10            	ld	de,01000h
+     424/     200 : 06 04               	ld	b,fd_boot_sig_0_len
+     425/     202 : CD 9A 02            	call	check_disk_signature
+     426/     205 : 20 3B               	jr	nz,rs_err
+     427/     207 :                     
+     428/     207 : 21 FE 02            	ld	hl,fd_boot_sig_1
+     429/     20A : 11 00 14            	ld	de,01400h
+     430/     20D : 06 04               	ld	b,fd_boot_sig_1_len
+     431/     20F : CD 9A 02            	call	check_disk_signature
+     432/     212 : 20 2E               	jr	nz,rs_err
+     433/     214 :                     
+     434/     214 : CD 04 14            	call	fd_boot_sig_1_loc+fd_boot_sig_1_len
+     435/     217 : C3 04 10            	jp	fd_boot_sig_0_loc+fd_boot_sig_0_len
+     436/     21A :                     
+     437/     21A :                     dc_err:
+     438/     21A : 11 43 44            	ld	de,'DC'
+     439/     21D : 18 26               	jr	boot_err_deselect_fd
+     440/     21F :                     
+     441/     21F :                     d0_err:
+     442/     21F : 11 30 44            	ld	de,'D0'
+     443/     222 : 18 21               	jr	boot_err_deselect_fd
+     444/     224 :                     
+     445/     224 :                     sc_err:
+     446/     224 : 11 43 53            	ld	de,'SC'
+     447/     227 : 18 1C               	jr	boot_err_deselect_fd
+     448/     229 :                     
+     449/     229 :                     ck_err:
+     450/     229 : 11 4B 43            	ld	de,'CK'
+     451/     22C : 18 2B               	jr	boot_err
+     452/     22E :                     
+     453/     22E :                     z8_err:
+     454/     22E : 11 38 5A            	ld	de,'Z8'
+     455/     231 : 18 26               	jr	boot_err
+     456/     233 :                     
+     457/     233 :                     mf_err:
+     458/     233 : 11 46 4D            	ld	de,'MF'
+     459/     236 : 18 21               	jr	boot_err
+     460/     238 :                     
+     461/     238 :                     tk_err:
+     462/     238 : 11 4B 54            	ld	de,'TK'
+     463/     23B : 18 08               	jr	boot_err_deselect_fd
+     464/     23D :                     
+     465/     23D :                     ld_err:
+     466/     23D : 11 44 4C            	ld	de,'LD'
+     467/     240 : 18 03               	jr	boot_err_deselect_fd
+     468/     242 :                     
+     469/     242 :                     rs_err:
+     470/     242 : 11 53 52            	ld	de,'RS'
+     471/     245 :                     
+     472/     245 :                     boot_err_deselect_fd:
+     473/     245 : CD 88 02            	call	terminate_fdc_cmd
+     474/     248 : 3E 02               	ld	a,fdc_cmd_restore+fdc_cmd_step_rate_10ms
+     475/     24A : D3 E4               	out	(fdc_cmd_reg),a
+     476/     24C :                     
+     477/     24C : 01 00 00            	ld	bc,0
+     478/     24F : CD 82 02            	call	delay_bc
+     479/     252 : CD 88 02            	call	terminate_fdc_cmd
+     480/     255 :                     
+     481/     255 : 3E 4F               	ld	a,fdc_sel_side_0+fdc_sel_dr_none
+     482/     257 : D3 EF               	out	(fdc_select_reg),a
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 9 - 2/22/2012 20:55:38
+
+
+     483/     259 :                     
+     484/     259 :                     boot_err:
+     485/     259 : 21 9A FB            	ld	hl,0fb9ah
+     486/     25C : 72                  	ld	(hl),d
+     487/     25D : 23                  	inc	hl
+     488/     25E : 73                  	ld	(hl),e
+     489/     25F : 23                  	inc	hl
+     490/     260 : 36 20               	ld	(hl),' '
+     491/     262 :                     
+     492/     262 : 21 E1 02            	ld	hl,boot_err_msg
+     493/     265 : 11 8E FB            	ld	de,0fb8eh
+     494/     268 : 01 0C 00            	ld	bc,boot_err_msg_len
+     495/     26B : ED B0               	ldir
+     496/     26D :                     
+     497/     26D :                     ; The following sequence should just be:
+     498/     26D :                     ;	call	check_escape_key
+     499/     26D :                     ;	jp	z,fd_boot_sig_0_loc+fd_boot_sig_0_len
+     500/     26D :                     ; But instead we have the following buggy sequence:
+     501/     26D : DB FF               	in	a,(nmi_status_reg)
+     502/     26F : CB 7F               	bit	nmi_status_bit_kbd_int,a
+     503/     271 : 28 0A               	jr	z,panic
+     504/     273 :                     ; BUG - the following IN instruction is missing!
+     505/     273 :                     ;	in	a,(kbd_data_reg)
+     506/     273 : FE 1B               	cp	key_escape
+     507/     275 : CA 04 10            	jp	z,fd_boot_sig_0_loc+fd_boot_sig_0_len
+     508/     278 : FE 03               	cp	key_break
+     509/     27A : CA 04 10            	jp	z,fd_boot_sig_0_loc+fd_boot_sig_0_len
+     510/     27D :                     
+     511/     27D :                     panic:
+     512/     27D : 76                  	halt
+     513/     27E : C7                  	rst	0	; should never get here!
+     514/     27F :                     
+     515/     27F :                     
+     516/     27F :                     delay_bc_5:
+     517/     27F : 01 05 00            	ld	bc,5
+     518/     282 :                     delay_bc:
+     519/     282 : 0B                  	dec	bc
+     520/     283 : 78                  	ld	a,b
+     521/     284 : B1                  	or	c
+     522/     285 : 20 FB               	jr	nz,delay_bc
+     523/     287 : C9                  	ret
+     524/     288 :                     
+     525/     288 :                     
+     526/     288 :                     ; use the FDC's FORCE INTERRUPT command to terminate anything in progress
+     527/     288 :                     ; returns FDC status regster in A
+     528/     288 :                     terminate_fdc_cmd:
+     529/     288 : C5                  	push	bc
+     530/     289 : 3E D8               	ld	a,fdc_cmd_force_int+fdc_cmd_force_int_immediate
+     531/     28B : D3 E4               	out	(fdc_cmd_reg),a
+     532/     28D : 3E D0               	ld	a,fdc_cmd_force_int
+     533/     28F : D3 E4               	out	(fdc_cmd_reg),a
+     534/     291 : CD 7F 02            	call	delay_bc_5
+     535/     294 : DB E7               	in	a,(fdc_data_reg)	; to reset DRQ, presumably
+     536/     296 : DB E4               	in	a,(fdc_status_reg)
+     537/     298 : C1                  	pop	bc
+     538/     299 : C9                  	ret
+     539/     29A :                     
+     540/     29A :                     
+     541/     29A :                     ; on entry:
+     542/     29A :                     ;   HL = pointer to expected signature value constant (ROM)
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 10 - 2/22/2012 20:55:38
+
+
+     543/     29A :                     ;   DE = pointer to disk buffer location to check for signature
+     544/     29A :                     ;   B = byte count
+     545/     29A :                     ; on return, zero flag set if match, clear if no match
+     546/     29A :                     check_disk_signature:
+     547/     29A : 1A                  	ld	a,(de)
+     548/     29B : BE                  	cp	(hl)
+     549/     29C : C0                  	ret	nz
+     550/     29D : 23                  	inc	hl
+     551/     29E : 13                  	inc	de
+     552/     29F : 10 F9               	djnz	check_disk_signature
+     553/     2A1 : C9                  	ret
+     554/     2A2 :                     
+     555/     2A2 :                     
+     556/     2A2 :                     ; on return, zero flag set if escape or break pressed, clear if not
+     557/     2A2 :                     check_escape_key:
+     558/     2A2 : DB FF               	in	a,(nmi_status_reg)
+     559/     2A4 : EE 80               	xor	080h
+     560/     2A6 : CB 7F               	bit	nmi_status_bit_kbd_int,a
+     561/     2A8 : C0                  	ret	nz
+     562/     2A9 : DB FC               	in	a,(kbd_data_reg)
+     563/     2AB : FE 1B               	cp	key_escape
+     564/     2AD : C8                  	ret	z
+     565/     2AE : FE 03               	cp	key_break
+     566/     2B0 : C9                  	ret
+     567/     2B1 :                     
+     568/     2B1 :                     ; returns with Z set and hdc_status_reg in A for no error
+     569/     2B1 :                     ; returns with Z clear and hdc_error_reg in A for HDC error
+     570/     2B1 :                     ; returns with Z clear and 008h in A for timeout
+     571/     2B1 :                     hd_wait_not_busy:
+     572/     2B1 : C5                  	push	bc
+     573/     2B2 : 01 00 00            	ld	bc,0		; retry counter (65536)
+     574/     2B5 :                     hd_wait_not_busy_loop:
+     575/     2B5 : DB CF               	in	a,(hdc_status_reg)
+     576/     2B7 : CB 7F               	bit	hdc_status_bit_busy,a
+     577/     2B9 : 20 04               	jr	nz,hd_busy
+     578/     2BB : CB 67               	bit	hdc_status_bit_seek_complete,a
+     579/     2BD : 20 0D               	jr	nz,hd_seek_complete
+     580/     2BF :                     
+     581/     2BF :                     hd_busy:
+     582/     2BF : DD E3               	ex	(sp),ix		; short delay
+     583/     2C1 : DD E3               	ex	(sp),ix
+     584/     2C3 : 0B                  	dec	bc		; decrement retry counter
+     585/     2C4 : 78                  	ld	a,b		; count expired?
+     586/     2C5 : B1                  	or	c
+     587/     2C6 : 20 ED               	jr	nz,hd_wait_not_busy_loop	;   no, try again
+     588/     2C8 : F6 08               	or	008h		; pretend we got an "id not found" error
+     589/     2CA : C1                  	pop	bc
+     590/     2CB : C9                  	ret
+     591/     2CC :                     
+     592/     2CC :                     hd_seek_complete:
+     593/     2CC : C1                  	pop	bc
+     594/     2CD : CB 47               	bit	hdc_status_bit_error,a	; any error
+     595/     2CF : C8                  	ret	z		; no, return with Z set
+     596/     2D0 : DB C9               	in	a,(hdc_error_reg)
+     597/     2D2 : C9                  	ret
+     598/     2D3 :                     
+     599/     2D3 :                     
+     600/     2D3 :                     hd_boot_end_sig:
+     601/     2D3 : 2F 2A 20 45 4E 44   	db	"/* END BOOT */"
+                    20 42 4F 4F 54 20 
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 11 - 2/22/2012 20:55:38
+
+
+                    2A 2F 
+     602/     2E1 : =EH                 hd_boot_end_sig_len	equ	$-hd_boot_end_sig
+     603/     2E1 :                     
+     604/     2E1 :                     boot_err_msg:
+     605/     2E1 : 20 42 4F 4F 54 20   	db	" BOOT ERROR "
+                    45 52 52 4F 52 20 
+     606/     2ED : =CH                 boot_err_msg_len	equ	$-boot_err_msg
+     607/     2ED :                     
+     608/     2ED : =1000H              fd_boot_sig_0_loc	equ	1000h
+     609/     2ED : =2E2H               fd_boot_sig_0		equ	boot_err_msg+1
+     610/     2ED : =4H                 fd_boot_sig_0_len	equ	4
+     611/     2ED :                     
+     612/     2ED :                     insert_disk_msg:
+     613/     2ED : 20 49 4E 53 45 52   	db	" INSERT DISKETTE "
+                    54 20 44 49 53 4B 
+                    45 54 54 45 20 
+     614/     2FE : =11H                insert_disk_msg_len	equ	$-insert_disk_msg
+     615/     2FE :                     
+     616/     2FE : =1400H              fd_boot_sig_1_loc	equ	1400h
+     617/     2FE :                     fd_boot_sig_1:
+     618/     2FE : 44 49 41 47         	db	"DIAG"
+     619/     302 : =4H                 fd_boot_sig_1_len	equ	$-fd_boot_sig_1
+     620/     302 :                     
+     621/     302 :                     ; CRC init table
+     622/     302 :                     crtc_init_table:
+     623/     302 : 63                  	db	99	; horizontal total
+     624/     303 : 50                  	db	80	; horizontal displayed
+     625/     304 : 55                  	db	85	; H sync position
+     626/     305 : 08                  	db	8	; H sync width
+     627/     306 : 19                  	db	25	; vertical total
+     628/     307 : 00                  	db	0	; V total adjust
+     629/     308 : 18                  	db	24	; vertical displayed
+     630/     309 : 18                  	db	24	; V sync position
+     631/     30A : 00                  	db	0	; interlace mode - no interlace
+     632/     30B : 09                  	db	10-1	; max scan line address
+     633/     30C : 65                  	db	crtc_cursor_blink_enable+crtc_cursor_blink_slow+5	; cursor start
+     634/     30D : 09                  	db	9	; cursor end
+     635/     30E : 00                  	db	0	; start address (H)
+     636/     30F : 00                  	db	0	; start address (L)
+     637/     310 : 03                  	db	3	; cursor (H)
+     638/     311 : E9                  	db	233	; cursor (L)
+     639/     312 : =10H                crtc_init_table_len	equ	$-crtc_init_table
+     640/     312 :                     
+     641/     312 : 03                  	db	003h		; version
+     642/     313 : 82 05 07            	db	082h,005h,007h	; 07-MAY-1982
+     643/     316 :                     
+     644/     316 : 12 43               	db	012h,043h	; ???
+     645/     318 :                     
+     646/     318 : 95                  	db	095h		; checksum
+     647/     319 :                     
+     648/     319 : =319H               rom_end	equ	$
+     649/     319 :                     
+     650/     319 :                     ; fill remainter of ROM with 0ffh
+     651/     319 :                     
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 12 - 2/22/2012 20:55:38
+
+
+  symbol table (* = unused):
+  ------------------------
+
+*ARCHITECTURE :    k8-unknown-linux - | *BIGENDIAN :                      0 - |
+ BOOT_ERR :                     259 C |  BOOT_ERR_DESELECT_FD :         245 C |
+ BOOT_ERR_MSG :                 2E1 C |  BOOT_ERR_MSG_LEN :               C - |
+*BRANCHEXT :                      0 - | *CASESENSITIVE :                  0 - |
+ CHECK_DISK_SIGNATURE :         29A C |  CHECK_ESCAPE_KEY :             2A2 C |
+ CK_ERR :                       229 C |  CLEAR_KBD_NO_KEY :              7B C |
+ CLEAR_KEYBOARD_LOOP :           73 C | *CONSTPI :        3.141592653589793 - |
+ CRTC_ADDR_REG :                 FC - | *CRTC_CURSOR_BIT_BLINK_ENABLE :   6 - |
+*CRTC_CURSOR_BIT_BLINK_SLOW :     5 - |  CRTC_CURSOR_BLINK_ENABLE :      40 - |
+ CRTC_CURSOR_BLINK_SLOW :        20 - |  CRTC_DATA_REG :                 FD - |
+ CRTC_INIT_LOOP :                1B C |  CRTC_INIT_TABLE :              302 C |
+ CRTC_INIT_TABLE_LEN :           10 - | *CTC_BIT_CONTROL :                0 - |
+*CTC_BIT_RESET :                  1 - | *CTC_CONTROL :                    1 - |
+*CTC_REG :                       F0 - | *CTC_RESET :                      2 - |
+ D0_ERR :                       21F C | *DATE :                   2/22/2012 - |
+ DC_ERR :                       21A C |  DELAY_BC :                     282 C |
+ DELAY_BC_5 :                   27F C | *DMA_CMD_RESET :                 C3 - |
+*DMA_REG :                       F8 - | *FALSE :                          0 - |
+ FDC_CMD_FORCE_INT :             D0 - |  FDC_CMD_FORCE_INT_IMMEDIATE :    8 - |
+*FDC_CMD_FORCE_INT_INDEX :        4 - | *FDC_CMD_FORCE_INT_NOT_READY :    2 - |
+*FDC_CMD_FORCE_INT_READY :        1 - |  FDC_CMD_HEAD_LOAD :              8 - |
+*FDC_CMD_READ_ADDRESS :          C0 - |  FDC_CMD_READ_SECTOR :           80 - |
+*FDC_CMD_READ_TRACK :            E0 - |  FDC_CMD_REG :                   E4 - |
+ FDC_CMD_RESTORE :                0 - | *FDC_CMD_SEEK :                  10 - |
+*FDC_CMD_STEP :                  20 - |  FDC_CMD_STEP_IN :               40 - |
+*FDC_CMD_STEP_OUT :              60 - |  FDC_CMD_STEP_RATE_10MS :         2 - |
+ FDC_CMD_STEP_RATE_15MS :         3 - | *FDC_CMD_STEP_RATE_3MS :          0 - |
+*FDC_CMD_STEP_RATE_6MS :          1 - |  FDC_CMD_UPDATE_TRACK :          10 - |
+*FDC_CMD_VERIFY_TRACK :           4 - | *FDC_CMD_WRITE_SECTOR :          A0 - |
+*FDC_CMD_WRITE_TRACK :           F0 - |  FDC_DATA_REG :                  E7 - |
+*FDC_PIO_REG :                   E0 - | *FDC_RESET_REG :                 E8 - |
+ FDC_SECTOR_REG :                E6 - |  FDC_SELECT_REG :                EF - |
+ FDC_SEL_DR_0 :                   E - | *FDC_SEL_DR_1 :                   D - |
+*FDC_SEL_DR_2 :                   B - | *FDC_SEL_DR_3 :                   7 - |
+ FDC_SEL_DR_NONE :                F - | *FDC_SEL_MFM :                   80 - |
+ FDC_SEL_SIDE_0 :                40 - |  FDC_STATUS_BIT_BUSY :            0 - |
+ FDC_STATUS_BIT_CRC_ERR :         3 - | *FDC_STATUS_BIT_DELETED_DATA :    5 - |
+ FDC_STATUS_BIT_DRQ :             1 - | *FDC_STATUS_BIT_HEAD_LOADED :     5 - |
+*FDC_STATUS_BIT_INDEX :           1 - | *FDC_STATUS_BIT_LOST_DATA :       2 - |
+ FDC_STATUS_BIT_NOT_READY :       7 - |  FDC_STATUS_BIT_REC_NOT_FOUND :   4 - |
+*FDC_STATUS_BIT_SEEK_ERR :        4 - | *FDC_STATUS_BIT_TRACK_ZERO :      2 - |
+*FDC_STATUS_BIT_WRITE_FAULT :     5 - | *FDC_STATUS_BIT_WRITE_PROTECTED : 6 - |
+ FDC_STATUS_BUSY :                1 - | *FDC_STATUS_CRC_ERR :             8 - |
+*FDC_STATUS_DELETED_DATA :       20 - | *FDC_STATUS_DRQ :                 2 - |
+*FDC_STATUS_HEAD_LOADED :        20 - | *FDC_STATUS_INDEX :               2 - |
+*FDC_STATUS_LOST_DATA :           4 - | *FDC_STATUS_NOT_READY :          80 - |
+*FDC_STATUS_REC_NOT_FOUND :      10 - |  FDC_STATUS_REG :                E4 - |
+ FDC_STATUS_SEEK_ERR :           10 - |  FDC_STATUS_TRACK_ZERO :          4 - |
+*FDC_STATUS_WRITE_FAULT :        20 - | *FDC_STATUS_WRITE_PROTECTED :    40 - |
+*FDC_TRACK_REG :                 E5 - |  FD_BOOT_SIG_0 :                2E2 - |
+ FD_BOOT_SIG_0_LEN :              4 - |  FD_BOOT_SIG_0_LOC :           1000 - |
+ FD_BOOT_SIG_1 :                2FE C |  FD_BOOT_SIG_1_LEN :              4 - |
+ FD_BOOT_SIG_1_LOC :           1400 - |  FD_LOAD_ADDR :                 E00 - |
+ FD_LOAD_SECTOR_COUNT :          1A - |  FD_LOAD_SECTOR_SIZE :           80 - |
+*FD_READ_BOOT :                 1AF C |  FD_READ_DATA_DONE :            1DD C |
+ FD_READ_DATA_LOOP :            1CF C |  FD_READ_DATA_NO_DRQ :          1D9 C |
+ FD_READ_OK :                   1F3 C |  FD_READ_SECTOR :               1BB C |
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 13 - 2/22/2012 20:55:38
+
+
+*FD_RESTORE :                   191 C |  FD_RESTORE_WAIT :              197 C |
+ FD_RETRY_COUNT :                28 - |  FD_STACK_INIT :               2000 - |
+ FD_STEP_IN_LOOP :              180 C |  FD_WAIT_FOR_READY :            167 C |
+ FLOPPY_BOOT :                  152 C | *FULLPMMU :                       1 - |
+ HARD_DISK_ERR :                137 C | *HAS64 :                          1 - |
+*HASDSP :                         0 - | *HASFPU :                         0 - |
+*HASPMMU :                        0 - | *HDC_COMMAND_FORMAT_TRACK :      50 - |
+*HDC_COMMAND_READ_SECTOR_DMA :   28 - |  HDC_COMMAND_READ_SECTOR_PIO :   20 - |
+ HDC_COMMAND_REG :               CF - |  HDC_COMMAND_RESTORE :           10 - |
+ HDC_COMMAND_SEEK :              70 - | *HDC_COMMAND_STEP_RATE_1P5_MS :   3 - |
+ HDC_COMMAND_STEP_RATE_7P5_MS :   F - | *HDC_COMMAND_WRITE_SECTOR :      30 - |
+ HDC_CONTROL_DEVEN :              8 - |  HDC_CONTROL_DMA_ENABLE :         1 - |
+ HDC_CONTROL_INTRQ_ENABLE :       2 - |  HDC_CONTROL_REG :               C1 - |
+*HDC_CONTROL_SOFT_INT :          40 - |  HDC_CONTROL_SOFT_RESET :        10 - |
+ HDC_CONTROL_WAIT_ENABLE :        4 - |  HDC_CYLINDER_HIGH_REG :         CD - |
+ HDC_CYLINDER_LOW_REG :          CC - |  HDC_DATA_REG :                  C8 - |
+ HDC_DRIVE_ID_45 :               C2 - | *HDC_DRIVE_ID_67 :               C3 - |
+ HDC_ERROR_BIT_ABORTED_CMD :      2 - | *HDC_ERROR_BIT_BAD_BLOCK :        7 - |
+ HDC_ERROR_BIT_CRC_DATA :         6 - |  HDC_ERROR_BIT_CRC_ID :           5 - |
+ HDC_ERROR_BIT_DATA_MARK_NOT_FOUND :                                      0 - |
+ HDC_ERROR_BIT_ID_NOT_FOUND :     4 - |
+ HDC_ERROR_BIT_TRACK_0_NOT_FOUND : 1 - |
+ HDC_ERROR_REG :                 C9 - | *HDC_SDH_SECT_SIZE_128 :         60 - |
+*HDC_SDH_SECT_SIZE_256 :          0 - |  HDC_SDH_SECT_SIZE_512 :         20 - |
+*HDC_SECTOR_COUNT_REG :          CA - |  HDC_SECTOR_NUMBER_REG :         CB - |
+ HDC_SIZE_DRIVE_HEAD_REG :       CE - |  HDC_STATUS_BIT_BUSY :            7 - |
+*HDC_STATUS_BIT_COMMAND_IN_PROGRESS :                                     1 - |
+ HDC_STATUS_BIT_DATA_REQUEST :    3 - |  HDC_STATUS_BIT_ERROR :           0 - |
+ HDC_STATUS_BIT_READY :           6 - |  HDC_STATUS_BIT_SEEK_COMPLETE :   4 - |
+*HDC_STATUS_BIT_WRITE_FAULT :     5 - |  HDC_STATUS_REG :                CF - |
+*HDC_WRITE_PRECOMP_REG :         C9 - | *HDC_WRITE_PROTECT_BIT_HDWPL :    6 - |
+*HDC_WRITE_PROTECT_BIT_INTRQ :    7 - | *HDC_WRITE_PROTECT_REG :         C0 - |
+*HD_BOOT :                       96 C |  HD_BOOT_END_SIG :              2D3 C |
+ HD_BOOT_END_SIG_LEN :            E - |  HD_BUSY :                      2BF C |
+ HD_ERR_FROM_ERR_REG :          111 C |  HD_IS_READY :                   AC C |
+ HD_LOAD_ADDR :                   0 - |  HD_READ_SECTOR :                CD C |
+ HD_SEEK_COMPLETE :             2CC C |  HD_STACK_INIT :               2800 - |
+ HD_TR0_NOT_FOUND :             12B C |  HD_WAIT_FOR_DRQ :               DA C |
+ HD_WAIT_NOT_BUSY :             2B1 C |  HD_WAIT_NOT_BUSY_LOOP :        2B5 C |
+ HD_WAIT_READY :                 98 C |  HT_ERR :                       10D C |
+*INEXTMODE :                      0 - | *INLWORDMODE :                    0 - |
+*INMAXMODE :                      0 - |  INSERT_DISK_MSG :              2ED C |
+ INSERT_DISK_MSG_LEN :           11 - | *INSRCMODE :                      0 - |
+*INSUPMODE :                      0 - |  INVERSE :                       80 - |
+ KBD_DATA_REG :                  FC - |  KEY_BREAK :                      3 - |
+ KEY_ESCAPE :                    1B - |  LD_ERR :                       23D C |
+*LISTON :                         1 - | *MACEXP :                         1 - |
+ MAX_ROM_SIZE :                1000 - |  MF_ERR :                       233 C |
+*MOMCPU :                        80 - | *MOMCPUNAME :                   Z80 - |
+*NESTMAX :                      100 - | *NMI_RAM_DIS_VIDEO :             40 - |
+*NMI_RAM_EN_40_COL :             10 - | *NMI_RAM_EN_RTC_INT :            20 - |
+ NMI_RAM_EN_VIDEO_RAM :          80 - |  NMI_RAM_REG :                   FF - |
+*NMI_STATUS_BIT_40_COL :          4 - | *NMI_STATUS_BIT_DIS_VIDEO :       6 - |
+ NMI_STATUS_BIT_KBD_INT :         7 - | *NMI_STATUS_BIT_RTC_INT_EN :      5 - |
+ NMI_STATUS_REG :                FF - | *PACKING :                        0 - |
+*PADDING :                        1 - |  PANIC :                        27D C |
+ RAM_SIZE :                    8000 - | *RAM_START :                      0 - |
+ RAM_TEST_LOOP :                 63 C | *RELAXED :                        0 - |
+ ROM_CHECKSUM_LOOP :             2C C |  ROM_END :                      319 - |
+*ROM_EN_REG :                    F9 - |  ROM_START :                      0 - |
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 14 - 2/22/2012 20:55:38
+
+
+ RS_ERR :                       242 C | *RTC_REG :                       FE - |
+ SCREEN_SIZE :                  800 - |  SCREEN_START :                F800 - |
+ SC_ERR :                       224 C | *SIO_CMD_CHANNEL_RESET :         18 - |
+*SIO_CTL_REG :                   F6 - | *SIO_DATA_REG :                  F4 - |
+ TERMINATE_FDC_CMD :            288 C | *TIME :                    20:55:38 - |
+ TK_ERR :                       238 C | *TRUE :                           1 - |
+*VERSION :                     142F - |  WAIT_FOR_ESCAPE_KEY :          14D C |
+ Z8_ERR :                       22E C |
+
+    245 symbols
+    106 unused symbols
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 15 - 2/22/2012 20:55:38
+
+
+  codepages:
+  ----------
+
+STANDARD (0 changed characters)
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 16 - 2/22/2012 20:55:38
+
+
+
+  cross reference list:
+  ---------------------
+
+symbol BOOT_ERR (=259,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:484):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     451      455      459    
+
+symbol BOOT_ERR_DESELECT_FD (=245,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:472):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     439      443      447      463      467    
+
+symbol BOOT_ERR_MSG (=2E1,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:604):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     273      492      606      609    
+
+symbol BOOT_ERR_MSG_LEN (=C,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:606):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     275      494    
+
+symbol CHECK_DISK_SIGNATURE (=29A,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:546):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     216      425      431      552    
+
+symbol CHECK_ESCAPE_KEY (=2A2,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:557):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     159      203      223      279    
+
+symbol CK_ERR (=229,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:449):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      68    
+
+symbol CLEAR_KBD_NO_KEY (=7B,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:124):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     122    
+
+symbol CLEAR_KEYBOARD_LOOP (=73,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:119):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     128    
+
+symbol CRTC_ADDR_REG (=FC,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:48):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      44    
+
+symbol CRTC_CURSOR_BLINK_ENABLE (=40,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:56):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     633    
+
+symbol CRTC_CURSOR_BLINK_SLOW (=20,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:57):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     633    
+
+symbol CRTC_DATA_REG (=FD,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:49):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      49    
+
+symbol CRTC_INIT_LOOP (=1B,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:46):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      52    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 17 - 2/22/2012 20:55:38
+
+
+symbol CRTC_INIT_TABLE (=302,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:622):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      45      639    
+
+symbol CRTC_INIT_TABLE_LEN (=10,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:639):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      44       45    
+
+symbol D0_ERR (=21F,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:441):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     346    
+
+symbol DC_ERR (=21A,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:437):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     343    
+
+symbol DELAY_BC (=282,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:518):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     126      148      222      320      334      478      522    
+
+symbol DELAY_BC_5 (=27F,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:516):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     376      534    
+
+symbol FDC_CMD_FORCE_INT (=D0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:90):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     530      532    
+
+symbol FDC_CMD_FORCE_INT_IMMEDIATE (=8,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:102):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     530    
+
+symbol FDC_CMD_HEAD_LOAD (=8,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:94):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     314      327    
+
+symbol FDC_CMD_READ_SECTOR (=80,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:85):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     359    
+
+symbol FDC_CMD_REG (=E4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:79):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     315      328      373      475      531      533    
+
+symbol FDC_CMD_RESTORE (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:80):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     327      474    
+
+symbol FDC_CMD_STEP_IN (=40,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:83):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     314    
+
+symbol FDC_CMD_STEP_RATE_10MS (=2,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:98):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     474    
+
+symbol FDC_CMD_STEP_RATE_15MS (=3,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:99):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     314      327    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 18 - 2/22/2012 20:55:38
+
+
+symbol FDC_CMD_UPDATE_TRACK (=10,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:93):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     314    
+
+symbol FDC_DATA_REG (=E7,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:147):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     380      535    
+
+symbol FDC_SECTOR_REG (=E6,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:146):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     370    
+
+symbol FDC_SELECT_REG (=EF,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:150):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     289      482    
+
+symbol FDC_SEL_DR_0 (=E,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:158):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     288    
+
+symbol FDC_SEL_DR_NONE (=F,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:157):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     481    
+
+symbol FDC_SEL_SIDE_0 (=40,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:156):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     288      481    
+
+symbol FDC_STATUS_BIT_BUSY (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:111):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     391    
+
+symbol FDC_STATUS_BIT_CRC_ERR (=3,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:112):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     347      411    
+
+symbol FDC_STATUS_BIT_DRQ (=1,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:133):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     384    
+
+symbol FDC_STATUS_BIT_NOT_READY (=7,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:114):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     345    
+
+symbol FDC_STATUS_BIT_REC_NOT_FOUND (=4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:135):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     409    
+
+symbol FDC_STATUS_BUSY (=1,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:116):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     342    
+
+symbol FDC_STATUS_REG (=E4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:108):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     339      383      399      536    
+
+symbol FDC_STATUS_SEEK_ERR (=10,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:129):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     342    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 19 - 2/22/2012 20:55:38
+
+
+symbol FDC_STATUS_TRACK_ZERO (=4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:128):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     341      342    
+
+symbol FD_BOOT_SIG_0 (=2E2,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:609):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     422    
+
+symbol FD_BOOT_SIG_0_LEN (=4,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:610):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     424      435      507      509    
+
+symbol FD_BOOT_SIG_0_LOC (=1000,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:608):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     435      507      509    
+
+symbol FD_BOOT_SIG_1 (=2FE,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:617):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     428      619    
+
+symbol FD_BOOT_SIG_1_LEN (=4,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:619):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     430      434    
+
+symbol FD_BOOT_SIG_1_LOC (=1400,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:616):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     434    
+
+symbol FD_LOAD_ADDR (=E00,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:271):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     352    
+
+symbol FD_LOAD_SECTOR_COUNT (=1A,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:273):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     353    
+
+symbol FD_LOAD_SECTOR_SIZE (=80,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:272):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     356    
+
+symbol FD_READ_DATA_DONE (=1DD,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:395):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     388    
+
+symbol FD_READ_DATA_LOOP (=1CF,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:382):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     392    
+
+symbol FD_READ_DATA_NO_DRQ (=1D9,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:390):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     385    
+
+symbol FD_READ_OK (=1F3,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:415):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     401    
+
+symbol FD_READ_SECTOR (=1BB,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:362):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     406      420    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 20 - 2/22/2012 20:55:38
+
+
+symbol FD_RESTORE_WAIT (=197,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:333):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     336    
+
+symbol FD_RETRY_COUNT (=28,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:274):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     353      418    
+
+symbol FD_STACK_INIT (=2000,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:282):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     283    
+
+symbol FD_STEP_IN_LOOP (=180,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:313):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     323    
+
+symbol FD_WAIT_FOR_READY (=167,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:297):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     300    
+
+symbol FLOPPY_BOOT (=152,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:282):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     143      160      204      224    
+
+symbol HARD_DISK_ERR (=137,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:264):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     234      239      243      247      251      256      260    
+
+symbol HDC_COMMAND_READ_SECTOR_PIO (=20,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:227):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     194    
+
+symbol HDC_COMMAND_REG (=CF,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:184):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     174      179      195    
+
+symbol HDC_COMMAND_RESTORE (=10,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:225):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     178    
+
+symbol HDC_COMMAND_SEEK (=70,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:226):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     173    
+
+symbol HDC_COMMAND_STEP_RATE_7P5_MS (=F,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:233):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     173      178    
+
+symbol HDC_CONTROL_DEVEN (=8,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:205):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     138    
+
+symbol HDC_CONTROL_DMA_ENABLE (=1,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:208):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     138    
+
+symbol HDC_CONTROL_INTRQ_ENABLE (=2,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:207):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     138    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 21 - 2/22/2012 20:55:38
+
+
+symbol HDC_CONTROL_REG (=C1,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:172):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     132      134      139      227      285    
+
+symbol HDC_CONTROL_SOFT_RESET (=10,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:204):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     133    
+
+symbol HDC_CONTROL_WAIT_ENABLE (=4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:206):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     138    
+
+symbol HDC_CYLINDER_HIGH_REG (=CD,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:182):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     170    
+
+symbol HDC_CYLINDER_LOW_REG (=CC,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:181):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     172    
+
+symbol HDC_DATA_REG (=C8,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:176):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     209    
+
+symbol HDC_DRIVE_ID_45 (=C2,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:173):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     141    
+
+symbol HDC_ERROR_BIT_ABORTED_CMD (=2,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:215):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     249    
+
+symbol HDC_ERROR_BIT_CRC_DATA (=6,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:212):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     237    
+
+symbol HDC_ERROR_BIT_CRC_ID (=5,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:213):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     241    
+
+symbol HDC_ERROR_BIT_DATA_MARK_NOT_FOUND (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:217):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     258    
+
+symbol HDC_ERROR_BIT_ID_NOT_FOUND (=4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:214):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     245    
+
+symbol HDC_ERROR_BIT_TRACK_0_NOT_FOUND (=1,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:216):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     253    
+
+symbol HDC_ERROR_REG (=C9,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:177):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     596    
+
+symbol HDC_SDH_SECT_SIZE_512 (=20,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:221):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     167    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 22 - 2/22/2012 20:55:38
+
+
+symbol HDC_SECTOR_NUMBER_REG (=CB,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:180):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     188    
+
+symbol HDC_SIZE_DRIVE_HEAD_REG (=CE,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:183):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     168    
+
+symbol HDC_STATUS_BIT_BUSY (=7,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:236):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     576    
+
+symbol HDC_STATUS_BIT_DATA_REQUEST (=3,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:240):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     201    
+
+symbol HDC_STATUS_BIT_ERROR (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:242):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     594    
+
+symbol HDC_STATUS_BIT_READY (=6,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:237):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     155    
+
+symbol HDC_STATUS_BIT_SEEK_COMPLETE (=4,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:239):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     578    
+
+symbol HDC_STATUS_REG (=CF,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:185):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     154      200      575    
+
+symbol HD_BOOT_END_SIG (=2D3,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:600):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     214      602    
+
+symbol HD_BOOT_END_SIG_LEN (=E,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:602):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     215    
+
+symbol HD_BUSY (=2BF,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:581):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     577    
+
+symbol HD_ERR_FROM_ERR_REG (=111,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:236):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     197    
+
+symbol HD_IS_READY (=AC,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:165):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     156    
+
+symbol HD_LOAD_ADDR (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:277):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     183    
+
+symbol HD_READ_SECTOR (=CD,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:190):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     219    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 23 - 2/22/2012 20:55:38
+
+
+symbol HD_SEEK_COMPLETE (=2CC,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:592):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     579    
+
+symbol HD_STACK_INIT (=2800,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:283):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      31    
+
+symbol HD_TR0_NOT_FOUND (=12B,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:254):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     181    
+
+symbol HD_WAIT_FOR_DRQ (=DA,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:199):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     202    
+
+symbol HD_WAIT_NOT_BUSY (=2B1,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:571):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     175      180      196    
+
+symbol HD_WAIT_NOT_BUSY_LOOP (=2B5,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:574):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     587    
+
+symbol HD_WAIT_READY (=98,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:147):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     162    
+
+symbol HT_ERR (=10D,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:232):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     163    
+
+symbol INSERT_DISK_MSG (=2ED,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:612):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     292      614    
+
+symbol INSERT_DISK_MSG_LEN (=11,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:614):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     294    
+
+symbol INVERSE (=80,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:256):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      40    
+
+symbol KBD_DATA_REG (=FC,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:47):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     123      562    
+
+symbol KEY_BREAK (=3,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:249):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     508      565    
+
+symbol KEY_ESCAPE (=1B,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:250):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     506      563    
+
+symbol LD_ERR (=23D,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:465):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     413    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 24 - 2/22/2012 20:55:38
+
+
+symbol MAX_ROM_SIZE (=1000,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:263):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     102      103    
+
+symbol MF_ERR (=233,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:457):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     113    
+
+symbol NMI_RAM_EN_VIDEO_RAM (=80,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:60):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      33    
+
+symbol NMI_RAM_REG (=FF,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:59):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      34    
+
+symbol NMI_STATUS_BIT_KBD_INT (=7,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:67):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     121      502      560    
+
+symbol NMI_STATUS_REG (=FF,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:66):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     120      501      558    
+
+symbol PANIC (=27D,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:511):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     503    
+
+symbol RAM_SIZE (=8000,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:266):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     102    
+
+symbol RAM_TEST_LOOP (=63,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:106):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     115    
+
+symbol ROM_CHECKSUM_LOOP (=2C,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:58):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      66    
+
+symbol ROM_END (=319,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:648):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      56    
+
+symbol ROM_START (=0,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:262):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      27       56       57    
+
+symbol RS_ERR (=242,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:469):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     426      432    
+
+symbol SCREEN_SIZE (=800,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:269):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      37       38       39      303      304      305    
+
+symbol SCREEN_START (=F800,/home/eric/retro/trs80/model2/boot_rom_src/m2.inc:268):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      38       39      304      305    
+
+ AS V1.42 Beta [Bld 81] - source file boot_v3.asm - page 25 - 2/22/2012 20:55:38
+
+
+symbol SC_ERR (=224,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:445):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     348      412    
+
+symbol TERMINATE_FDC_CMD (=288,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:528):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     298      309      325      367      473      479    
+
+symbol TK_ERR (=238,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:461):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     410    
+
+symbol WAIT_FOR_ESCAPE_KEY (=14D,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:278):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+     280    
+
+symbol Z8_ERR (=22E,/home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm:453):
+ file /home/eric/retro/trs80/model2/boot_rom_src/boot_v3.asm :
+      99    
+
+
+
+0.01 seconds assembly time
+
+    937 lines source file
+      2 passes
+      0 errors
+      0 warnings

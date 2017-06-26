@@ -1,0 +1,7 @@
+TRS-80 Model II ROM Checksum Mappings
+Tandy -> Reader
+0A79 -> C8FF
+4A6A -> 2BFF
+88E2 -> 2119
+C9AC -> 9733	Smart enough to not boot HD
+BFC0 -> FC86

@@ -1,0 +1,29 @@
+DATE: July 29, 1982
+REVISION DATE: September 8, 1986
+BULLETIN NO: II:33
+PRODUCT: 26-4001/2 Model II 26-6001/2 Model 16
+SUBASSEMBLY: AXX-0501 Z-80 CPU AX-9242 Z-80 CPU
+SUBASSEMBLY REVISION:    All Revisions (Rev. A,B,C,&D)
+PURPOSE: Checksums for Model II/16 Boot ROM's.
+ 
+   DISCUSSION: The  following checksum values are for the boot ROM (U11) on the
+  Z-80 CPU board in both the Model II and Model 16 using MEMII.
+1. 432F Boots floppy drives only. (Early Model II's only)
+2. 0A79 Boots floppy drives only.
+3. 4A6A Hard drive boot ROM. (Installed with hard drive upgrade)
+4. 88E2 or F42A
+Also Hard drive boot ROM. These two ROM's have a slightly
+different boot sequence. The ROM checks for track 00
+indication, if the head is on track 00 it will be stepped
+out and then back in before reading the boot track. This is
+because the Tandon drive does not have a track 00 stop, and
+it is possible for the head to fall out beyond track 00 and
+still give a track 00 indication.
+5. C9AC or E996
+These checksums will be found in Model 12/16B/6000's
+normally, but will also be found in newer Hard Drive Upgrade
+kits. These checksums are compatible with Western Digital
+hard drive controllers The E996 checksum will usually
+only be found in machines with internal Hard Drives. Both
+checksums are backward compatible which means they will work
+with all current Hard Drives.

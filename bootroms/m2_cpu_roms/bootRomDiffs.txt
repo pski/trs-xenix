@@ -1,0 +1,6 @@
+cpu_c8ff.bin/.hex - No HDA support (Version 1, no date)
+cpu_2bff.bin/.hex - slightly different HD boot code (compared to 1bbe/2119) (Version 2, 81-07-29)
+cpu_2119.bin/.hex - Identical to 1bbe (8 bytes different in the unused area) (Version 3, 82-05-07)
+cpu_1bbe.bin/.hex - Identical to 2119 (8 bytes different in the unused area) (Version 3, 82-05-07)
+cpu_fc86.bin/.hex - U54 in M12. Very similar to 9733, but with ROM checksum (Version 4, 82-11-18)
+cpu_9733.bin/.hex - Resets DMA, CTC SIO, no ROM checksum (Version 5, 83-07-29)

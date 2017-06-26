@@ -1,0 +1,26 @@
+TRS-80 Model II/12/16 boot ROM - reverse-engineered source code
+Copyright 2012 Eric Smith <eric@brouhaha.com>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of version 3 of the GNU General Public License as
+  published by the Free Software Foundation.
+
+  This program is distributed in the hope that it will be useful, but
+  WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+This archive contains reverse-engineered source code of versions 1
+through 5 of the boot ROM used in the Radio Shack TRS-80 Model II, 12,
+and 16 microcomputers.  Note that the early versions may not be
+suitable for the later models, and vice versa, due to changes in the
+disk drives and controllers.
+
+The source code uses long identifiers, so it won't assemble with some
+common Z80 assemblers that only consider the first six characters
+significant.  It will assemble with the "Macro Assembler AS" cross
+assembler:
+        http://www.alfsembler.de/

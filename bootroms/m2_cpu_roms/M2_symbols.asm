@@ -1,6 +1,6 @@
 ;Source: Model II Technical Reference Manual 26-4921
 ;	 Model II Technical Reference Manual 26-4921 Revised Floppy Disk Controller SUPPLEMENT
-;	 TRS Times Januari/February 1994
+;	 TRS Times January/February 1994
 
 ; HDA board
 HDWRP:	equ	0xC0 ; Write  Protect Register - Read Only   

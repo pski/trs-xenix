@@ -12,7 +12,7 @@
 ;	Z-80 test
 ;	RAM test
 ;	Flush keyboard input
-;	Seek all hard drives to cylinder 0
+;	Seek all hard drives to cylinder 5
 ;	Seek all floppy drives to track 0
 ;	If hard drive detected:
 ;		Attempt to boot from hard drive
@@ -23,7 +23,7 @@
 ; memory starting at address 0.  When it finds a sector that starts with the 14
 ; byte string "/* END BOOT */" it jumps to 14 bytes into that sector.
 ;
-; Floppy drive boot reads all of drive 0, track 0 (26 x 256 byte sectors) into
+; Floppy drive boot reads all of drive 0, track 0 (26 x 128 byte sectors) into
 ; memory starting at 0xE00.  If sector 3 (loaded at 0x1000) starts with "BOOT"
 ; and sector 7 (loaded at 0x1400) starts with "DIAG" it calls 0x1404 (sector 7)
 ; and jumps to 0x1004 (sector 1) if that returns.

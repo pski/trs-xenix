@@ -4,7 +4,7 @@
 ; and verify that file still assembles to the original.  Under windows:
 ;
 ;	zmac x320boot.asm
-;	fc /b zout/x320boot.cim x320boot
+;	fc /b zout\x320boot.cim x320boot
 ;
 ; For Mac and Linux:
 ;
@@ -15,10 +15,13 @@
 ; to easily determine the data bytes.
 ;
 ; Current Status:
-;	Not completely clear the entry point is $1004.  Check out boot ROM.
-;
 ;	Disassembly largely complete.  Should be able to reassemble at will.
 ;	Still need some labels and commentary but major pieces documented.
+;
+; Boot ROM loads this code from track 0 of floppy 0 into $e00.  It must
+; have "BOOT" at $1000 (sector 3) and "DIAG" at $1400.  If so it will
+; call $1404 (start) and then JP to $1004.  This boot track never returns
+; from the $1404 call.
 ;
 ; The main areas of the code are display routines, floppy-disc sector reading
 ; and file loading from the UNIX file system.  Pretty clear that it is
@@ -33,6 +36,9 @@
 ;
 ; The console display code is clearly related to that in diskutil and z80ctl.
 ; More like that in diskutil but perhaps even less functionality.
+;
+; It is important that a message be displayed early in the code.
+; See pal_ntsc_detect for details.
 
 		org	$80
 port_shadow:	defs	$100
@@ -259,10 +265,16 @@ _112b:		ld	a,i
 		ret	
 
 ; Figure out if we have a 60 Hz (NTSC) or 50 Hz (PAL) display.
-; Seems like it my be deciding this by looking at the BOOT ROM.
-; Or something set up by the boot ROM.  Mysterious.  Though it
-; sure does look like it is growling around looking for the
-; CRTC setup parameters in the boot ROM.
+; This is done by examinging the boot ROM.  It searches the entire ROM
+; for $18,$00,$09 and if found declares NTSC if the byte before that is
+; $19 and PAL if it is $1E.  This is just searching for the CRTC register
+; values in the boot ROM which are the same as used here but are stored
+; in reverse order.
+;
+; This detection is called once only when the first character is printed.
+; The boot ROM doesn't switch itself out and our code doesn't execpt at
+; the end of this detection routine.  So it is rather important that a
+; message be printed before anything tries to read low memory.
 
 pal_ntsc_detect:
 		push	af
@@ -330,10 +342,10 @@ _11a8:		ld	a,010h
 		pop	af
 		ret	
 
-crtc_reg_init:	defb	063h,050h,054h,00fh,019h,000h,018h,018h,000h,009h,069h,009h,000h,000h,000h,000h
+crtc_reg_init:	defb	$63,$50,$54,$0f,$19,$00,$18,$18,$00,$09,$69,$09,$00,$00,$00,$00
 
 crtc_pal_change:
-		defb	01eh,002h,018h,01bh
+		defb	                $1e,$02,$18,$1b
 
 hz_msg:		ascii	'[60hz]'
 hz_msg_end:	ascii	0		; nul not actually needed
@@ -654,7 +666,6 @@ _13be:		pop	de
 		dc	$1400-$,0
 
 		ascii	'DIAG'
-; TODO: This entry point is just a guess.  Boot ROM will tell us for sure.
 start:
 restart:	di	
 		jr	splash
@@ -671,7 +682,7 @@ splash:		ld	sp,01b31h
 		ld	hl,_14dc
 		ld	(000feh),hl
 		xor	a
-		ld	(07ffeh),a	; let some other problem know we ran?
+		ld	(07ffeh),a	; let some other program know we ran?
 		ld	a,002h
 		ld	(00065h),a
 		call	setup_hardware
